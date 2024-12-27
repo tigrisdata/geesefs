@@ -23,11 +23,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/winfsp/cgofuse/fuse"
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/sirupsen/logrus"
+	"github.com/winfsp/cgofuse/fuse"
 
-	"github.com/yandex-cloud/geesefs/internal/cfg"
+	"github.com/yandex-cloud/geesefs/core/cfg"
 )
 
 // winfsp/cgofuse interface to the file system
@@ -57,7 +57,7 @@ WinFSP advanced options:
    -o LegacyUnlinkRename      do not support new POSIX unlink/rename
    -o ThreadCount             number of file system dispatcher threads
    -o uidmap=UID:SID[;...]    explicit UID <-> SID map (max 8 entries)
-`;
+`
 }
 
 type GoofysWin struct {
@@ -156,8 +156,8 @@ func (fs *GoofysWin) Mknod(path string, mode uint32, dev uint64) (ret int) {
 
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
-	if (mode & fuse.S_IFMT) != fuse.S_IFDIR &&
-		(mode & fuse.S_IFMT) != 0 &&
+	if (mode&fuse.S_IFMT) != fuse.S_IFDIR &&
+		(mode&fuse.S_IFMT) != 0 &&
 		!fs.flags.EnableSpecials {
 		return -fuse.ENOTSUP
 	}
@@ -215,7 +215,7 @@ func (fs *GoofysWin) Mkdir(path string, mode uint32) (ret int) {
 		return mapWinError(err)
 	}
 	if fs.flags.EnablePerms {
-		inode.Attributes.Mode = os.ModeDir | fuseops.ConvertFileMode(mode) & os.ModePerm
+		inode.Attributes.Mode = os.ModeDir | fuseops.ConvertFileMode(mode)&os.ModePerm
 	} else {
 		inode.Attributes.Mode = os.ModeDir | fs.flags.DirMode
 	}
@@ -449,7 +449,7 @@ func (fs *GoofysWin) Create(path string, flags int, mode uint32) (ret int, fhId 
 }
 
 func endsWith(path, part string) bool {
-	ld := len(path)-len(part)
+	ld := len(path) - len(part)
 	return len(part) > 0 && ld >= 0 && (ld == 0 || path[ld-1] == '/') && path[ld:] == part
 }
 

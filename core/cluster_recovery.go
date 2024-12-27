@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 package internal
@@ -5,8 +6,8 @@ package internal
 import (
 	"context"
 
-	"github.com/yandex-cloud/geesefs/internal/cfg"
-	"github.com/yandex-cloud/geesefs/internal/pb"
+	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/yandex-cloud/geesefs/core/pb"
 )
 
 var recLog = cfg.GetLogger("rec")

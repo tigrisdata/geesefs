@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 package internal
@@ -10,7 +11,7 @@ import (
 	"time"
 
 	"github.com/jacobsa/fuse/fuseops"
-	"github.com/yandex-cloud/geesefs/internal/pb"
+	"github.com/yandex-cloud/geesefs/core/pb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

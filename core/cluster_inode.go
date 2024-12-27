@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 package internal
@@ -6,7 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 
-	"github.com/yandex-cloud/geesefs/internal/pb"
+	"github.com/yandex-cloud/geesefs/core/pb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

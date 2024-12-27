@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 package internal
@@ -6,8 +7,8 @@ import (
 	"context"
 	"net"
 
-	"github.com/yandex-cloud/geesefs/internal/cfg"
-	"github.com/yandex-cloud/geesefs/internal/pb"
+	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/yandex-cloud/geesefs/core/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"

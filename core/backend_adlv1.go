@@ -16,7 +16,7 @@
 package internal
 
 import (
-	"github.com/yandex-cloud/geesefs/internal/cfg"
+	"github.com/yandex-cloud/geesefs/core/cfg"
 
 	"bytes"
 	"context"
@@ -151,8 +151,8 @@ func NewADLv1(bucket string, flags *cfg.FlagStorage, config *cfg.ADLv1Config) (*
 		bucket:  bucket,
 		cap: Capabilities{
 			//NoParallelMultipart: true,
-			DirBlob:             true,
-			Name:                "adl",
+			DirBlob: true,
+			Name:    "adl",
 			// ADLv1 fails with 404 if we upload data
 			// larger than 30000000 bytes (28.6MB) (28MB
 			// also failed in at one point, but as of

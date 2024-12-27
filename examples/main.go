@@ -16,8 +16,8 @@
 package main
 
 import (
-	"github.com/yandex-cloud/geesefs/internal/cfg"
-	"github.com/yandex-cloud/geesefs/internal"
+	core "github.com/yandex-cloud/geesefs/core"
+	"github.com/yandex-cloud/geesefs/core/cfg"
 
 	"fmt"
 	"os"
@@ -35,7 +35,7 @@ import (
 
 var log = cfg.GetLogger("main")
 
-func registerSIGINTHandler(fs *internal.Goofys, mfs internal.MountedFS, flags *cfg.FlagStorage) {
+func registerSIGINTHandler(fs *core.Goofys, mfs core.MountedFS, flags *cfg.FlagStorage) {
 	// Register for SIGINT.
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, signalsToHandle...)
@@ -130,7 +130,7 @@ func main() {
 			go func() {
 				addr := pprof
 				if strings.Index(addr, ":") == -1 {
-					addr = "127.0.0.1:"+addr
+					addr = "127.0.0.1:" + addr
 				}
 				log.Println(http.ListenAndServe(addr, nil))
 			}()

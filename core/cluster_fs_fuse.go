@@ -1,20 +1,21 @@
+//go:build !windows
 // +build !windows
 
 package internal
 
 import (
 	"context"
-	iofs "io/fs"
 	"fmt"
-	"syscall"
+	iofs "io/fs"
 	"sync/atomic"
+	"syscall"
 
-	"github.com/yandex-cloud/geesefs/internal/cfg"
 	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/jacobsa/fuse/fuseutil"
-	"github.com/yandex-cloud/geesefs/internal/pb"
 	"github.com/sirupsen/logrus"
+	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/yandex-cloud/geesefs/core/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

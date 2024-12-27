@@ -3,7 +3,7 @@ package internal
 import (
 	. "gopkg.in/check.v1"
 
-	"github.com/yandex-cloud/geesefs/internal/cfg"
+	"github.com/yandex-cloud/geesefs/core/cfg"
 )
 
 type DirTest struct{}

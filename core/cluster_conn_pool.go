@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 package internal
@@ -8,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yandex-cloud/geesefs/internal/cfg"
+	"github.com/yandex-cloud/geesefs/core/cfg"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"

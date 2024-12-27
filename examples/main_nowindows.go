@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 // Copyright 2015 - 2017 Ka-Hing Cheung
@@ -29,11 +30,12 @@ import (
 	"github.com/kardianos/osext"
 	daemon "github.com/sevlyar/go-daemon"
 
-	"github.com/yandex-cloud/geesefs/internal/cfg"
-	"github.com/yandex-cloud/geesefs/internal"
+	core "github.com/yandex-cloud/geesefs/core"
+
+	"github.com/yandex-cloud/geesefs/core/cfg"
 )
 
-var signalsToHandle = []os.Signal{ os.Interrupt, syscall.SIGTERM, syscall.SIGUSR1 }
+var signalsToHandle = []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGUSR1}
 
 func isSigUsr1(s os.Signal) bool {
 	return s == syscall.SIGUSR1
@@ -58,7 +60,7 @@ const canDaemonize = true
 
 type Daemonizer struct {
 	result os.Signal
-	wg sync.WaitGroup
+	wg     sync.WaitGroup
 }
 
 func NewDaemonizer() *Daemonizer {
@@ -128,11 +130,11 @@ func (p *Daemonizer) NotifySuccess(success bool) {
 func mount(
 	ctx context.Context,
 	bucketName string,
-	flags *cfg.FlagStorage) (fs *internal.Goofys, mfs internal.MountedFS, err error) {
+	flags *cfg.FlagStorage) (fs *core.Goofys, mfs core.MountedFS, err error) {
 	if flags.ClusterMode {
-		return internal.MountCluster(ctx, bucketName, flags)
+		return core.MountCluster(ctx, bucketName, flags)
 	} else {
-		return internal.MountFuse(ctx, bucketName, flags)
+		return core.MountFuse(ctx, bucketName, flags)
 	}
 }
 

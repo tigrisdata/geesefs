@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 package internal
@@ -13,8 +14,8 @@ import (
 
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/jacobsa/fuse/fuseutil"
-	"github.com/yandex-cloud/geesefs/internal/cfg"
-	"github.com/yandex-cloud/geesefs/internal/pb"
+	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/yandex-cloud/geesefs/core/pb"
 	"google.golang.org/grpc"
 )
 

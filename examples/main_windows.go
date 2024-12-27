@@ -19,11 +19,10 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/yandex-cloud/geesefs/internal/cfg"
-	"github.com/yandex-cloud/geesefs/internal"
+	"github.com/yandex-cloud/geesefs/core/cfg"
 )
 
-var signalsToHandle = []os.Signal{ os.Interrupt, syscall.SIGTERM }
+var signalsToHandle = []os.Signal{os.Interrupt, syscall.SIGTERM}
 
 func isSigUsr1(s os.Signal) bool {
 	return false
@@ -57,8 +56,8 @@ func (p *Daemonizer) NotifySuccess(success bool) {
 func mount(
 	ctx context.Context,
 	bucketName string,
-	flags *cfg.FlagStorage) (fs *internal.Goofys, mfs internal.MountedFS, err error) {
-	return internal.MountWin(ctx, bucketName, flags)
+	flags *cfg.FlagStorage) (fs *core.Goofys, mfs core.MountedFS, err error) {
+	return core.MountWin(ctx, bucketName, flags)
 }
 
 func messagePath() {
