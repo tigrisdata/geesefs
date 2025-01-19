@@ -12,6 +12,7 @@ _s3_setup() {
 }
 
 NUM_ITER="${NUM_ITER:-50}"
+export GORACE="halt_on_error=1"
 
 _cluster_setup() {
   mkdir -p "$TEST_ARTIFACTS/test_random"

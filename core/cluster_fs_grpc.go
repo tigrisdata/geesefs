@@ -25,8 +25,9 @@ func (fs *ClusterFsGrpc) TryStealInodeOwnership(ctx context.Context, req *pb.Try
 	inode.ChangeOwnerLock()
 
 	if inode.owner != fs.Conns.id {
+		pbOwner := inode.pbOwner()
 		inode.ChangeOwnerUnlock()
-		return &pb.TryStealInodeOwnershipResponse{AnotherOwner: inode.pbOwner()}, nil
+		return &pb.TryStealInodeOwnershipResponse{AnotherOwner: pbOwner}, nil
 	}
 
 	resp := &pb.TryStealInodeOwnershipResponse{
@@ -366,8 +367,9 @@ func (fs *ClusterFsGrpc) GetInodeAttributes(ctx context.Context, req *pb.GetInod
 	inode.KeepOwnerLock()
 
 	if inode.owner != fs.Conns.id {
+		pbOwner := inode.pbOwner()
 		inode.KeepOwnerUnlock()
-		return &pb.GetInodeAttributesResponse{AnotherOwner: inode.pbOwner()}, nil
+		return &pb.GetInodeAttributesResponse{AnotherOwner: pbOwner}, nil
 	}
 
 	var size uint64

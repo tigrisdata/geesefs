@@ -650,6 +650,9 @@ func (fs *ClusterFs) trySteal(inode *Inode) (success bool, err error) {
 
 // REQUIRED_LOCK(inode.ChangeOwner)
 func (fs *ClusterFs) applyStolenInode(inode *Inode, stolenInode *pb.StolenInode) {
+	inode.mu.Lock()
+	defer inode.mu.Unlock()
+
 	if inode.isDir() {
 		for _, pbInode := range stolenInode.Children {
 			child := fs.ensure(inode, pbInode)
@@ -794,8 +797,12 @@ func (fs *ClusterFs) StatPrinter() {
 
 func (dh *DirHandle) loadChildren() error {
 	inode := dh.inode
+	inode.mu.Lock()
+	defer inode.mu.Unlock()
 	for inode.dir.lastFromCloud == nil && !inode.dir.listDone {
+		inode.mu.Unlock()
 		_, err := dh.listObjectsFlat()
+		inode.mu.Lock()
 		if err != nil {
 			return err
 		}
