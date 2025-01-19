@@ -20,8 +20,6 @@
 package core
 
 import (
-	"github.com/yandex-cloud/geesefs/core/cfg"
-
 	"bytes"
 	"context"
 	"io/ioutil"
@@ -32,14 +30,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jacobsa/fuse/fuseops"
 	"github.com/pkg/xattr"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 	. "gopkg.in/check.v1"
 
-	"github.com/jacobsa/fuse/fuseops"
-
 	bench_embed "github.com/yandex-cloud/geesefs/bench"
+	"github.com/yandex-cloud/geesefs/core/cfg"
 	test_embed "github.com/yandex-cloud/geesefs/test"
 )
 
@@ -699,22 +697,22 @@ func (s *GoofysTest) TestConcurrentRefDeref(t *C) {
 
 		// The idea of this test is just that lookup->forget->lookup shouldn't crash with "Unknown inode: xxx"
 		wg.Add(2)
-		go func() {
+		go func(op fuseops.LookUpInodeOp) {
 			// we want to yield to the forget goroutine so that it's run first
 			// to trigger this bug
 			if i%2 == 0 {
 				runtime.Gosched()
 			}
-			fsint.LookUpInode(nil, &lookupOp)
+			fsint.LookUpInode(nil, &op)
 			wg.Done()
-		}()
-		go func() {
+		}(lookupOp)
+		go func(id fuseops.InodeID) {
 			fsint.ForgetInode(nil, &fuseops.ForgetInodeOp{
-				Inode: lookupOp.Entry.Child,
+				Inode: id,
 				N:     1,
 			})
 			wg.Done()
-		}()
+		}(lookupOp.Entry.Child)
 
 		wg.Wait()
 

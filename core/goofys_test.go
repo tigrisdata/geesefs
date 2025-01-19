@@ -43,6 +43,7 @@ import (
 	"github.com/yandex-cloud/geesefs/core/cfg"
 
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -57,19 +58,17 @@ import (
 	"syscall"
 	"time"
 
-	"context"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/corehandlers"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	aws_s3 "github.com/aws/aws-sdk-go/service/s3"
-
 	"github.com/jacobsa/fuse/fuseops"
-
 	. "gopkg.in/check.v1"
 )
 
 func (s *GoofysTest) getRoot(t *C) (inode *Inode) {
+	s.fs.mu.Lock()
+	defer s.fs.mu.Unlock()
 	inode = s.fs.inodes[fuseops.RootInodeID]
 	t.Assert(inode, NotNil)
 	return
@@ -511,8 +510,8 @@ func (s *GoofysTest) TestWriteLargeTruncateMem20M(t *C) {
 	fileName := "testLargeTruncate"
 
 	root := s.getRoot(t)
-	s3 := root.dir.cloud
-	cloud := &TestBackend{StorageBackend: s3}
+	s3 := root.fs.getCloud()
+	cloud := NewTestBackend(&TestBackend{StorageBackend: s3})
 	cloud.MultipartBlobAddFunc = func(param *MultipartBlobAddInput) (*MultipartBlobAddOutput, error) {
 		if param.PartNumber > 20 {
 			return nil, syscall.ENOSYS
@@ -523,7 +522,7 @@ func (s *GoofysTest) TestWriteLargeTruncateMem20M(t *C) {
 		// MultipartBlobCopyFunc returning error makes sure it doesn't get called
 		return nil, syscall.ENOSYS
 	}
-	root.dir.cloud = cloud
+	root.fs.setCloud(cloud)
 
 	err := root.Unlink(fileName)
 	t.Assert(err == nil || err == syscall.ENOENT, Equals, true)
@@ -614,8 +613,8 @@ func (s *GoofysTest) TestMultiStreamMem100M(t *C) {
 	fhs := make([]*FileHandle, len(streams))
 
 	root := s.getRoot(t)
-	s3 := root.dir.cloud
-	cloud := &TestBackend{StorageBackend: s3}
+	s3 := root.fs.getCloud()
+	cloud := NewTestBackend(&TestBackend{StorageBackend: s3})
 	// Check that all uploads work optimally and don't complete until the end
 	cloud.MultipartBlobCommitFunc = func(param *MultipartBlobCommitInput) (*MultipartBlobCommitOutput, error) {
 		t.Fatal("Uploads should not be completed in the middle of upload")
@@ -636,7 +635,7 @@ func (s *GoofysTest) TestMultiStreamMem100M(t *C) {
 		seenMu.Unlock()
 		return s3.MultipartBlobAdd(param)
 	}
-	root.dir.cloud = cloud
+	root.fs.setCloud(cloud)
 
 	for i, filename := range streams {
 		err := root.Unlink(filename)
@@ -911,7 +910,7 @@ func (s *GoofysTest) TestRenamePreserveMetadata(t *C) {
 		t.Assert(err, IsNil)
 	}
 
-	s.fs.flags.MaxFlushers = 0
+	atomic.StoreInt64(&s.fs.flags.MaxFlushers, 0)
 
 	err = root.Rename(from, root, to)
 	t.Assert(err, IsNil)
@@ -924,7 +923,7 @@ func (s *GoofysTest) TestRenamePreserveMetadata(t *C) {
 	xattrVal, err := toInode.GetXattr("user.foo")
 	t.Assert(xattrVal, DeepEquals, []byte("bar"))
 
-	s.fs.flags.MaxFlushers = 16
+	atomic.StoreInt64(&s.fs.flags.MaxFlushers, 16)
 
 	err = toInode.SyncFile()
 	t.Assert(err, IsNil)
@@ -1513,7 +1512,7 @@ func (s *GoofysTest) anonymous(t *C) {
 	t.Assert(s.fs, NotNil)
 
 	// should have auto-detected by S3 backend
-	cloud = s.getRoot(t).dir.cloud
+	cloud = s.getRoot(t).fs.getCloud()
 	t.Assert(cloud, NotNil)
 	s3, ok = cloud.Delegate().(*S3Backend)
 	t.Assert(ok, Equals, true)
@@ -1528,15 +1527,17 @@ func (s *GoofysTest) disableS3() {
 
 func (s *GoofysTest) setS3(back StorageBackend) StorageBackend {
 	time.Sleep(1 * time.Second) // wait for any background goroutines to finish
-	dir := s.fs.inodes[fuseops.RootInodeID].dir
-	old := dir.cloud
+	inode := s.fs.inodes[fuseops.RootInodeID]
+	inode.mu.Lock()
+	defer inode.mu.Unlock()
+	old := inode.fs.getCloud()
 	if back == nil {
 		back = StorageBackendInitError{
 			fmt.Errorf("cloud disabled"),
-			*dir.cloud.Capabilities(),
+			*old.Capabilities(),
 		}
 	}
-	dir.cloud = back
+	inode.fs.setCloud(back)
 	return old
 }
 
@@ -1699,7 +1700,7 @@ func (s *GoofysTest) TestXAttrGet(t *C) {
 
 	// s3proxy doesn't support storage class yet
 	if hasEnv("AWS") {
-		cloud := s.getRoot(t).dir.cloud
+		cloud := s.getRoot(t).fs.getCloud()
 		s3, ok := cloud.Delegate().(*S3Backend)
 		t.Assert(ok, Equals, true)
 		s3.config.StorageClass = "STANDARD_IA"
@@ -2027,7 +2028,7 @@ func (s *GoofysTest) TestDirMtimeLs(t *C) {
 
 func (s *GoofysTest) TestRead403(t *C) {
 	// anonymous only works in S3 for now
-	cloud := s.getRoot(t).dir.cloud
+	cloud := s.getRoot(t).fs.getCloud()
 	s3, ok := cloud.Delegate().(*S3Backend)
 	if !ok {
 		t.Skip("only for S3")
@@ -2318,7 +2319,7 @@ func (s *GoofysTest) TestVFS(t *C) {
 	t.Assert(in, NotNil)
 	t.Assert(err, IsNil)
 
-	in.dir.cloud = cloud2
+	in.fs.setCloud(cloud2)
 	in.dir.mountPrefix = "cloud2Prefix/"
 
 	rootCloud, rootPath := in.cloud()
@@ -2359,7 +2360,7 @@ func (s *GoofysTest) TestVFS(t *C) {
 	t.Assert(err, IsNil)
 	t.Assert(subdir, NotNil)
 	t.Assert(subdir.dir, NotNil)
-	t.Assert(subdir.dir.cloud, IsNil)
+	t.Assert(subdir.fs.getCloud(), IsNil)
 
 	subdirCloud, subdirPath := subdir.cloud()
 	t.Assert(subdirCloud, NotNil)
@@ -2399,13 +2400,15 @@ func (s *GoofysTest) TestVFS(t *C) {
 }
 
 func (s *GoofysTest) TestMountsList(t *C) {
+	t.Skip("Nested mounts not supported")
+
 	s.fs.flags.StatCacheTTL = 1 * time.Minute
 
 	bucket := "goofys-test-" + RandStringBytesMaskImprSrc(16)
 	cloud := s.newBackend(t, bucket, true)
 
 	root := s.getRoot(t)
-	rootCloud := root.dir.cloud
+	rootCloud := root.fs.getCloud()
 
 	s.fs.MountAll([]*Mount{
 		&Mount{"dir4/cloud1", cloud, "", false},
@@ -2418,21 +2421,21 @@ func (s *GoofysTest) TestMountsList(t *C) {
 
 	s.readDirIntoCache(t, in.Id)
 	// ensure that listing is listing mounts and root bucket in one go
-	root.dir.cloud = nil
+	root.fs.setCloud(nil)
 
 	s.assertEntries(t, in, []string{"cloud1", "file5"})
 
 	c1, err := s.fs.LookupPath("dir4/cloud1")
 	t.Assert(err, IsNil)
 	t.Assert(c1.Name, Equals, "cloud1")
-	t.Assert(c1.dir.cloud == cloud, Equals, true)
+	t.Assert(c1.fs.getCloud() == cloud, Equals, true)
 	t.Assert(int(c1.Id), Equals, 3)
 
 	// pretend we've passed the normal cache ttl
 	s.fs.flags.StatCacheTTL = 0
 
 	// listing root again should not overwrite the mounts
-	root.dir.cloud = rootCloud
+	root.fs.setCloud(rootCloud)
 
 	s.readDirIntoCache(t, in.Parent.Id)
 	s.assertEntries(t, in, []string{"cloud1", "file5"})
@@ -2440,13 +2443,15 @@ func (s *GoofysTest) TestMountsList(t *C) {
 	c1, err = s.fs.LookupPath("dir4/cloud1")
 	t.Assert(err, IsNil)
 	t.Assert(c1.Name, Equals, "cloud1")
-	t.Assert(c1.dir.cloud == cloud, Equals, true)
+	t.Assert(c1.fs.getCloud() == cloud, Equals, true)
 	t.Assert(int(c1.Id), Equals, 3)
 
 	s.fs.Unmount("dir4/cloud1")
 }
 
 func (s *GoofysTest) TestMountsNewDir(t *C) {
+	t.Skip("Nested mounts not supported")
+
 	s.clearPrefix(t, s.cloud, "dir5")
 
 	_, err := s.fs.LookupPath("dir5")
@@ -2463,10 +2468,12 @@ func (s *GoofysTest) TestMountsNewDir(t *C) {
 	c1, err := s.fs.LookupPath("dir5/cloud1")
 	t.Assert(err, IsNil)
 	t.Assert(c1.isDir(), Equals, true)
-	t.Assert(c1.dir.cloud, Equals, s.cloud)
+	t.Assert(c1.fs.getCloud(), Equals, s.cloud)
 }
 
 func (s *GoofysTest) TestMountsNewMounts(t *C) {
+	t.Skip("Nested mounts not supported")
+
 	bucket := "goofys-test-" + RandStringBytesMaskImprSrc(16)
 	cloud := s.newBackend(t, bucket, true)
 
@@ -2484,7 +2491,7 @@ func (s *GoofysTest) TestMountsNewMounts(t *C) {
 	c1, err := s.fs.LookupPath("dir4/cloud1")
 	t.Assert(err, IsNil)
 	t.Assert(c1.Name, Equals, "cloud1")
-	t.Assert(c1.dir.cloud == cloud, Equals, true)
+	t.Assert(c1.fs.getCloud() == cloud, Equals, true)
 
 	_, err = s.fs.LookupPath("dir4/cloud2")
 	t.Assert(err, Equals, syscall.ENOENT)
@@ -2497,7 +2504,7 @@ func (s *GoofysTest) TestMountsNewMounts(t *C) {
 	c2, err := s.fs.LookupPath("dir4/cloud2")
 	t.Assert(err, IsNil)
 	t.Assert(c2.Name, Equals, "cloud2")
-	t.Assert(c2.dir.cloud == cloud, Equals, true)
+	t.Assert(c2.fs.getCloud() == cloud, Equals, true)
 	t.Assert(c2.dir.mountPrefix, Equals, "cloudprefix")
 }
 
@@ -2565,7 +2572,7 @@ func (s *GoofysTest) TestMountsError(t *C) {
 	t.Assert(err, IsNil)
 	t.Assert(in, NotNil)
 
-	t.Assert(in.dir.cloud.Capabilities().Name, Equals, cloud.Capabilities().Name)
+	t.Assert(in.fs.getCloud().Capabilities().Name, Equals, cloud.Capabilities().Name)
 }
 
 func (s *GoofysTest) TestMountsMultiLevel(t *C) {
@@ -2586,6 +2593,7 @@ func (s *GoofysTest) TestMountsMultiLevel(t *C) {
 }
 
 func (s *GoofysTest) TestMountsNested(t *C) {
+	t.Skip("Nested mounts not supported")
 	s.testMountsNested(t, s.cloud, []*Mount{
 		&Mount{"dir5/in/a/dir", s.cloud, "test_nested/1/dir/", false},
 		&Mount{"dir5/in/", s.cloud, "test_nested/2/", false},
@@ -2594,6 +2602,7 @@ func (s *GoofysTest) TestMountsNested(t *C) {
 
 // test that mount order doesn't matter for nested mounts
 func (s *GoofysTest) TestMountsNestedReversed(t *C) {
+	t.Skip("Nested mounts not supported")
 	s.testMountsNested(t, s.cloud, []*Mount{
 		&Mount{"dir5/in/", s.cloud, "test_nested/2/", false},
 		&Mount{"dir5/in/a/dir", s.cloud, "test_nested/1/dir/", false},
@@ -2633,7 +2642,7 @@ func (s *GoofysTest) testMountsNested(t *C, cloud StorageBackend,
 	dir_dir, err := s.fs.LookupPath("dir5/in/a/dir")
 	t.Assert(err, IsNil)
 	t.Assert(dir_dir.Name, Equals, "dir")
-	t.Assert(dir_dir.dir.cloud == cloud, Equals, true)
+	t.Assert(dir_dir.fs.getCloud() == cloud, Equals, true)
 
 	_, err = s.fs.LookupPath("dir5/in/testfile")
 	t.Assert(err, Equals, syscall.ENOENT)

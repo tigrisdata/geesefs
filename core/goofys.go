@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"net/url"
 	"os"
 	"runtime/debug"
@@ -31,11 +32,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
-
 	"github.com/jacobsa/fuse/fuseops"
-
-	"net/http"
-
 	"github.com/sirupsen/logrus"
 )
 
@@ -119,6 +116,19 @@ type Goofys struct {
 	stats OpStats
 
 	NotifyCallback func(notifications []interface{})
+
+	cloud atomic.Pointer[StorageBackend]
+}
+
+func (g *Goofys) setCloud(cloud StorageBackend) {
+	g.cloud.Store(&cloud)
+}
+
+func (g *Goofys) getCloud() StorageBackend {
+	if g == nil {
+		return nil
+	}
+	return *g.cloud.Load()
 }
 
 type OpStats struct {
@@ -328,7 +338,7 @@ func newGoofys(ctx context.Context, bucket string, flags *cfg.FlagStorage,
 	if err != nil {
 		return nil, fmt.Errorf("Unable to access '%v': %v", bucket, err)
 	}
-	cloud.MultipartExpire(&MultipartExpireInput{})
+	_, _ = cloud.MultipartExpire(&MultipartExpireInput{})
 
 	now := time.Now()
 	fs.rootAttrs = InodeAttributes{
@@ -350,11 +360,11 @@ func newGoofys(ctx context.Context, bucket string, flags *cfg.FlagStorage,
 	fs.nextInodeID = fuseops.RootInodeID + 1
 	fs.inodes = make(map[fuseops.InodeID]*Inode)
 	fs.inodesByTime = make(map[int64]map[fuseops.InodeID]bool)
+	fs.setCloud(cloud)
 	root := NewInode(fs, nil, "")
 	root.refcnt = 1
 	root.Id = fuseops.RootInodeID
 	root.ToDir()
-	root.dir.cloud = cloud
 	root.dir.mountPrefix = prefix
 	root.userMetadata = make(map[string][]byte)
 	root.Attributes.Mtime = fs.rootAttrs.Mtime
@@ -532,7 +542,7 @@ func (fs *Goofys) FreeSomeCleanBuffers(origSize int64) (int64, bool) {
 			fs.tryEvictToDisk(inode, buf, &toFs)
 			allocated, _ := inode.buffers.EvictFromMemory(buf)
 			if allocated != 0 {
-				fs.bufferPool.UseUnlocked(allocated, false)
+				_ = fs.bufferPool.UseUnlocked(allocated, false)
 				freed -= allocated
 			}
 		}
@@ -637,7 +647,7 @@ func (fs *Goofys) Flusher() {
 		for i := 1; i <= priority; i++ {
 			curPriorityOk = curPriorityOk || atomic.LoadInt64(&fs.flushPriorities[priority]) > 0
 		}
-		for attempts > 0 && atomic.LoadInt64(&fs.activeFlushers) < fs.flags.MaxFlushers {
+		for attempts > 0 && atomic.LoadInt64(&fs.activeFlushers) < atomic.LoadInt64(&fs.flags.MaxFlushers) {
 			inodeID, nextQueueID = fs.inodeQueue.Next(nextQueueID)
 			if inodeID == 0 {
 				if curPriorityOk {
@@ -647,9 +657,6 @@ func (fs *Goofys) Flusher() {
 				if priority > MAX_FLUSH_PRIORITY {
 					attempts--
 					priority = 1
-				}
-				if curPriorityOk {
-					break
 				}
 			} else {
 				if atomic.CompareAndSwapUint64(&fs.hasNewWrites, 1, 0) {
@@ -839,7 +846,6 @@ func (fs *Goofys) mount(mp *Inode, b *Mount) {
 	if prev == nil {
 		mountInode := NewInode(fs, mp, name)
 		mountInode.ToDir()
-		mountInode.dir.cloud = b.cloud
 		mountInode.dir.mountPrefix = b.prefix
 		mountInode.SetAttrTime(TIME_MAX)
 		mountInode.userMetadata = make(map[string][]byte)
@@ -858,7 +864,6 @@ func (fs *Goofys) mount(mp *Inode, b *Mount) {
 		prev.resetDirTimeRec()
 		prev.mu.Lock()
 		defer prev.mu.Unlock()
-		prev.dir.cloud = b.cloud
 		prev.dir.mountPrefix = b.prefix
 		prev.SetAttrTime(TIME_MAX)
 
@@ -941,7 +946,7 @@ func (fs *Goofys) RefreshInodeCache(inode *Inode) error {
 			}
 			dh.Next(en.Name)
 		}
-		dh.CloseDir()
+		_ = dh.CloseDir()
 		dh.mu.Unlock()
 		if fs.NotifyCallback != nil {
 			fs.NotifyCallback(notifications)
@@ -1164,7 +1169,7 @@ func (fs *Goofys) SyncTree(parent *Inode) (err error) {
 		inode := fs.inodes[id]
 		fs.mu.RUnlock()
 		if inode != nil {
-			inode.SyncFile()
+			_ = inode.SyncFile()
 		}
 	}
 	return

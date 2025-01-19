@@ -3,7 +3,7 @@
 # Test creates and removes files and directories in random order
 #
 
-set -x
+#set -x
 
 . `dirname $0`/common.sh
 
@@ -12,19 +12,20 @@ _s3_setup() {
 }
 
 NUM_ITER="${NUM_ITER:-50}"
+export GORACE="halt_on_error=1"
 
 _cluster_setup() {
   mkdir -p "$TEST_ARTIFACTS/test_random"
   touch "$TEST_ARTIFACTS/test_random/log1" "$TEST_ARTIFACTS/test_random/log2" "$TEST_ARTIFACTS/test_random/log3"
 
   MNT1=$(mktemp -d)
-  _mount "$MNT1" -f --debug_fuse --debug_grpc --log-file="$TEST_ARTIFACTS/test_random/log1" --pprof=6060 --cluster-me=1:localhost:1337 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339
+  _mount "$MNT1" -f --log-file="$TEST_ARTIFACTS/test_random/log1" --pprof=6060 --cluster-me=1:localhost:1337 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339 #--debug_fuse --debug_grpc
 
   MNT2=$(mktemp -d)
-  _mount "$MNT2" -f --debug_fuse --debug_grpc --log-file="$TEST_ARTIFACTS/test_random/log2" --pprof=6070 --cluster-me=2:localhost:1338 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339
+  _mount "$MNT2" -f --log-file="$TEST_ARTIFACTS/test_random/log2" --pprof=6070 --cluster-me=2:localhost:1338 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339
 
   MNT3=$(mktemp -d)
-  _mount "$MNT3" -f --debug_fuse --debug_grpc --log-file="$TEST_ARTIFACTS/test_random/log3" --pprof=6080 --cluster-me=3:localhost:1339 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339
+  _mount "$MNT3" -f --log-file="$TEST_ARTIFACTS/test_random/log3" --pprof=6080 --cluster-me=3:localhost:1339 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339
 
   rm -rf "${MNT1:?}/*"
   rm -rf "${MNT2:?}/*"
@@ -38,6 +39,9 @@ _cleanup() {
   _umount "$MNT3"
   _umount "$MNT2"
   _umount "$MNT1"
+  cat "$TEST_ARTIFACTS/test_random/log1"
+  cat "$TEST_ARTIFACTS/test_random/log2"
+  cat "$TEST_ARTIFACTS/test_random/log3"
 }
 
 _test() {
@@ -101,7 +105,7 @@ _test() {
         esac
     fi
 
-    tree "$VALID_DIR"
+    #tree "$VALID_DIR"
 
     diff -y <(cd "$VALID_DIR"; find . | sort) <(cd "$MNT1"; find . | fgrep -v '-' | sort)
     diff -y <(cd "$MNT1"; find . | sort) <(cd "$MNT2"; find . | sort)

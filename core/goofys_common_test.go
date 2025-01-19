@@ -466,9 +466,9 @@ func (s *GoofysTest) setUpTestTimeout(t *C, timeout time.Duration) {
 	debug.SetTraceback("all")
 	started := time.Now()
 
-	go func() {
+	go func(tm chan int) {
 		select {
-		case _, ok := <-s.timeout:
+		case _, ok := <-tm:
 			if !ok {
 				return
 			}
@@ -476,7 +476,7 @@ func (s *GoofysTest) setUpTestTimeout(t *C, timeout time.Duration) {
 			panic(fmt.Sprintf("timeout %v reached. Started %v now %v",
 				timeout, started, time.Now()))
 		}
-	}()
+	}(s.timeout)
 }
 
 func (s *GoofysTest) SetUpTest(t *C) {

@@ -16,6 +16,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -37,7 +38,6 @@ type SlurpGap struct {
 }
 
 type DirInodeData struct {
-	cloud       StorageBackend
 	mountPrefix string
 
 	// lastOpenDirIdx refers to readdir of the Children
@@ -210,7 +210,7 @@ func (inode *Inode) OpenDir() (dh *DirHandle) {
 // Slurp can be used multiple times by passing returned nextStartAfter as an argument the next time.
 func (inode *Inode) slurpOnce(lock bool) (done bool, err error) {
 	parent := inode
-	for parent != nil && parent.dir.cloud == nil {
+	for parent.Parent != nil {
 		parent = parent.Parent
 	}
 	next, err := parent.listObjectsSlurp(inode, "", true, lock)
@@ -227,7 +227,7 @@ func isInvalidName(name string) bool {
 }
 
 func RetryListBlobs(flags *cfg.FlagStorage, cloud StorageBackend, req *ListBlobsInput) (resp *ListBlobsOutput, err error) {
-	ReadBackoff(flags, func(attempt int) error {
+	_ = ReadBackoff(flags, func(attempt int) error {
 		resp, err = cloud.ListBlobs(req)
 		if err != nil && shouldRetry(err) {
 			s3Log.Warnf("Error listing objects with prefix=%v delimiter=%v start-after=%v max-keys=%v (attempt %v): %v\n",
@@ -776,11 +776,11 @@ func (parent *Inode) removeExpired(from string) {
 		if parent.dir.lastFromCloud != nil && childTmp.Name >= *parent.dir.lastFromCloud {
 			break
 		}
+		childTmp.mu.Lock()
 		if childTmp.AttrTime.Before(parent.dir.refreshStartTime) &&
 			atomic.LoadInt32(&childTmp.fileHandles) == 0 &&
 			atomic.LoadInt32(&childTmp.CacheState) <= ST_DEAD &&
 			(!childTmp.isDir() || atomic.LoadInt64(&childTmp.dir.ModifiedChildren) == 0) {
-			childTmp.mu.Lock()
 			childTmp.resetCache()
 			childTmp.SetCacheState(ST_DEAD)
 			notifications = append(notifications, &fuseops.NotifyDelete{
@@ -792,9 +792,9 @@ func (parent *Inode) removeExpired(from string) {
 				childTmp.removeAllChildrenUnlocked()
 			}
 			parent.removeChildUnlocked(childTmp)
-			childTmp.mu.Unlock()
 			i--
 		}
+		childTmp.mu.Unlock()
 	}
 	if len(notifications) > 0 && parent.fs.NotifyCallback != nil {
 		parent.fs.NotifyCallback(notifications)
@@ -902,7 +902,6 @@ func (inode *Inode) ResetForUnmount() {
 	inode.mu.Lock()
 	// First reset the cloud info for this directory. After that, any read and
 	// write operations under this directory will not know about this cloud.
-	inode.dir.cloud = nil
 	inode.dir.mountPrefix = ""
 
 	// Clear metadata.
@@ -1004,7 +1003,9 @@ func (parent *Inode) removeChildUnlocked(inode *Inode) {
 	// POSIX allows parallel readdir() and modifications,
 	// so preserve position of all directory handles
 	for _, dh := range parent.dir.handles {
+		dh.mu.Lock()
 		dh.lastInternalOffset = -1
+		dh.mu.Unlock()
 	}
 	// >= because we use the "last open dir" as the "next" one
 	if parent.dir.lastOpenDirIdx >= i {
@@ -1513,15 +1514,19 @@ func (parent *Inode) RmDir(name string) (err error) {
 			return syscall.ENOTEMPTY
 		}
 
+		var fs *Goofys
 		parent.mu.Lock()
 		inode := parent.findChildUnlocked(name)
 		if inode != nil {
 			inode.mu.Lock()
 			inode.doUnlink()
+			fs = inode.fs
 			inode.mu.Unlock()
 		}
 		parent.mu.Unlock()
-		inode.fs.WakeupFlusher()
+		if fs != nil {
+			fs.WakeupFlusher()
+		}
 	}
 
 	return
@@ -1757,7 +1762,8 @@ func renameInCache(fromInode *Inode, newParent *Inode, to string) {
 		if err != nil {
 			log.Warnf("Error renaming %v to %v: %v", oldFileName, newFileName, err)
 			if fromInode.DiskCacheFD != nil {
-				fromInode.DiskCacheFD.Close()
+				err1 := fromInode.DiskCacheFD.Close()
+				log.Warnf("Error closing disk cache fd in renaming %v to %v: %v", oldFileName, newFileName, err1)
 				fromInode.DiskCacheFD = nil
 				fromInode.fs.diskFdQueue.DeleteFD(fromInode)
 			}
@@ -1880,12 +1886,14 @@ func (parent *Inode) findChildMaxTime() (maxMtime, maxCtime time.Time) {
 	maxMtime = parent.Attributes.Mtime
 
 	for _, c := range parent.dir.Children {
+		c.mu.Lock()
 		if c.Attributes.Ctime.After(maxCtime) {
 			maxCtime = c.Attributes.Ctime
 		}
 		if c.Attributes.Mtime.After(maxMtime) {
 			maxMtime = c.Attributes.Mtime
 		}
+		c.mu.Unlock()
 	}
 
 	return
@@ -1899,7 +1907,7 @@ func (parent *Inode) LookUpCached(name string) (inode *Inode, err error) {
 		ok = true
 		if expired(inode.AttrTime, parent.fs.flags.StatCacheTTL) {
 			ok = false
-			if inode.CacheState != ST_CACHED ||
+			if atomic.LoadInt32(&inode.CacheState) != ST_CACHED ||
 				inode.isDir() && atomic.LoadInt64(&inode.dir.ModifiedChildren) > 0 {
 				// we have an open file handle, object
 				// in S3 may not represent the true
@@ -1955,7 +1963,7 @@ func (parent *Inode) LookUp(name string, doSlurp bool) (*Inode, error) {
 	_, parentKey := parent.cloud()
 	key := appendChildName(parentKey, name)
 	root := parent
-	for root != nil && root.dir.cloud == nil {
+	for root.Parent != nil {
 		root = root.Parent
 	}
 	expire := time.Now().Add(-parent.fs.flags.StatCacheTTL)
@@ -2010,6 +2018,53 @@ func (parent *Inode) LookUp(name string, doSlurp bool) (*Inode, error) {
 	return inode, nil
 }
 
+type resType struct {
+	res *BlobItemOutput
+	err error
+}
+
+func lookupObject(cloud StorageBackend, key string) resType {
+	object, err := cloud.HeadBlob(&HeadBlobInput{Key: key})
+	if err != nil {
+		return resType{nil, err}
+	}
+
+	return resType{&object.BlobItemOutput, nil}
+}
+
+func lookupDirObject(cloud StorageBackend, key string) resType {
+	dirObject, err := cloud.HeadBlob(&HeadBlobInput{Key: key + "/"})
+	if err != nil {
+		return resType{nil, err}
+	}
+
+	return resType{&dirObject.BlobItemOutput, nil}
+}
+
+func lookupPrefixList(cloud StorageBackend, key string, flags *cfg.FlagStorage) resType {
+	prefixList, err := RetryListBlobs(flags, cloud, &ListBlobsInput{
+		Delimiter: PString("/"),
+		MaxKeys:   PUInt32(1),
+		Prefix:    PString(key + "/"),
+	})
+	if err != nil {
+		return resType{nil, err}
+	}
+
+	if len(prefixList.Prefixes) != 0 || len(prefixList.Items) != 0 {
+		if len(prefixList.Items) != 0 && (*prefixList.Items[0].Key == key ||
+			(*prefixList.Items[0].Key)[0:len(key)+1] == key+"/") {
+			return resType{&prefixList.Items[0], nil}
+		}
+
+		return resType{&BlobItemOutput{
+			Key: PString(key + "/"),
+		}, nil}
+	}
+
+	return resType{nil, syscall.ENOENT}
+}
+
 func (parent *Inode) LookUpInodeMaybeDir(name string) (*BlobItemOutput, error) {
 	parent.mu.Lock()
 	defer parent.mu.Unlock()
@@ -2021,91 +2076,57 @@ func (parent *Inode) LookUpInodeMaybeDir(name string) (*BlobItemOutput, error) {
 	key := appendChildName(parentKey, name)
 	parent.logFuse("Inode.LookUp", key)
 
-	var object, dirObject *HeadBlobOutput
-	var prefixList *ListBlobsOutput
-	var objectError, dirError, prefixError error
-	results := make(chan int, 3)
-	n := 0
+	resCh := make(chan resType, 3)
 
-	for {
+	var n int
+
+	if cloud.Capabilities().DirBlob || parent.fs.flags.Cheap {
+		r := lookupObject(cloud, key)
+		if r.err == nil || !errors.Is(mapAwsError(r.err), syscall.ENOENT) {
+			return r.res, r.err
+		}
+	} else {
 		n++
-		go func() {
-			object, objectError = cloud.HeadBlob(&HeadBlobInput{Key: key})
-			results <- 1
-		}()
-		if cloud.Capabilities().DirBlob {
-			<-results
-			break
-		}
+		go func() { resCh <- lookupObject(cloud, key) }()
+	}
+
+	if !parent.fs.flags.NoDirObject {
 		if parent.fs.flags.Cheap {
-			<-results
-			if mapAwsError(objectError) != syscall.ENOENT {
-				break
+			r := lookupDirObject(cloud, key)
+			if r.err == nil || !errors.Is(mapAwsError(r.err), syscall.ENOENT) {
+				return r.res, r.err
 			}
-		}
-
-		if !parent.fs.flags.NoDirObject {
+		} else {
 			n++
-			go func() {
-				dirObject, dirError = cloud.HeadBlob(&HeadBlobInput{Key: key + "/"})
-				results <- 2
-			}()
-			if parent.fs.flags.Cheap {
-				<-results
-				if mapAwsError(dirError) != syscall.ENOENT {
-					break
-				}
-			}
+			go func() { resCh <- lookupDirObject(cloud, key) }()
 		}
+	}
 
-		if !parent.fs.flags.ExplicitDir {
+	if !parent.fs.flags.ExplicitDir {
+		if parent.fs.flags.Cheap {
+			r := lookupPrefixList(cloud, key, parent.fs.flags)
+			return r.res, r.err
+		} else {
 			n++
-			go func() {
-				prefixList, prefixError = RetryListBlobs(parent.fs.flags, cloud, &ListBlobsInput{
-					Delimiter: PString("/"),
-					MaxKeys:   PUInt32(1),
-					Prefix:    PString(key + "/"),
-				})
-				results <- 3
-			}()
-			if parent.fs.flags.Cheap {
-				<-results
-			}
-		}
-
-		break
-	}
-
-	for n > 0 {
-		n--
-		if !cloud.Capabilities().DirBlob && !parent.fs.flags.Cheap {
-			<-results
-		}
-		if object != nil {
-			return &object.BlobItemOutput, nil
-		}
-		if dirObject != nil {
-			return &dirObject.BlobItemOutput, nil
-		}
-		if prefixList != nil && (len(prefixList.Prefixes) != 0 || len(prefixList.Items) != 0) {
-			if len(prefixList.Items) != 0 && (*prefixList.Items[0].Key == key ||
-				(*prefixList.Items[0].Key)[0:len(key)+1] == key+"/") {
-				return &prefixList.Items[0], nil
-			}
-			return &BlobItemOutput{
-				Key: PString(key + "/"),
-			}, nil
+			go func() { resCh <- lookupPrefixList(cloud, key, parent.fs.flags) }()
 		}
 	}
 
-	if objectError != nil && mapAwsError(objectError) != syscall.ENOENT {
-		return nil, objectError
+	results := make([]resType, 0, 3)
+	for ; n > 0; n-- {
+		r := <-resCh
+		if r.res != nil {
+			return r.res, nil
+		}
+
+		results = append(results, r)
 	}
-	if dirError != nil && mapAwsError(dirError) != syscall.ENOENT {
-		return nil, dirError
+
+	for _, r := range results {
+		if r.err != nil && !errors.Is(mapAwsError(r.err), syscall.ENOENT) {
+			return nil, r.err
+		}
 	}
-	if prefixError != nil && mapAwsError(prefixError) != syscall.ENOENT {
-		return nil, prefixError
-	}
+
 	return nil, syscall.ENOENT
 }

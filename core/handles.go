@@ -31,7 +31,6 @@ import (
 	"time"
 
 	"github.com/jacobsa/fuse/fuseops"
-
 	"github.com/sirupsen/logrus"
 
 	"github.com/yandex-cloud/geesefs/core/cfg"
@@ -259,29 +258,8 @@ func (inode *Inode) cloud() (cloud StorageBackend, path string) {
 		dir = inode
 	}
 
-	for p := dir; p != nil; p = p.Parent {
-		if p.dir.cloud != nil {
-			cloud = p.dir.cloud
-			// the error backend produces a mount.err file
-			// at the root and is not aware of prefix
-			_, isErr := cloud.(StorageBackendInitError)
-			if !isErr {
-				// we call init here instead of
-				// relying on the wrapper to call init
-				// because we want to return the right
-				// prefix
-				if c, ok := cloud.(*StorageBackendInitWrapper); ok {
-					err := c.Init("")
-					isErr = err != nil
-				}
-			}
-
-			if !isErr {
-				prefix = p.dir.mountPrefix
-			}
-			break
-		}
-
+	p := dir
+	for ; p.Parent != nil; p = p.Parent {
 		if path == "" {
 			path = p.Name
 		} else if p.Parent != nil {
@@ -290,11 +268,31 @@ func (inode *Inode) cloud() (cloud StorageBackend, path string) {
 		}
 	}
 
+	cloud = p.fs.getCloud()
+	// the error backend produces a mount.err file
+	// at the root and is not aware of prefix
+	_, isErr := cloud.(StorageBackendInitError)
+	if !isErr {
+		// we call init here instead of
+		// relying on the wrapper to call init
+		// because we want to return the right
+		// prefix
+		if c, ok := cloud.(*StorageBackendInitWrapper); ok {
+			err := c.Init("")
+			isErr = err != nil
+		}
+	}
+
+	if !isErr {
+		prefix = p.dir.mountPrefix
+	}
+
 	if path == "" {
 		path = strings.TrimRight(prefix, "/")
 	} else {
 		path = prefix + path
 	}
+
 	return
 }
 
@@ -468,7 +466,7 @@ func (inode *Inode) isDir() bool {
 }
 
 func RetryHeadBlob(flags *cfg.FlagStorage, cloud StorageBackend, req *HeadBlobInput) (resp *HeadBlobOutput, err error) {
-	ReadBackoff(flags, func(attempt int) error {
+	_ = ReadBackoff(flags, func(attempt int) error {
 		resp, err = cloud.HeadBlob(req)
 		if err != nil && shouldRetry(err) {
 			s3Log.Warnf("Error getting metadata of %v (attempt %v): %v\n", req.Key, attempt, err)
@@ -915,7 +913,7 @@ func (inode *Inode) DumpThis(fn string, withBuffers bool, noLock bool) (children
 	}
 	if inode.Parent != nil {
 		dataMap["parent"] = map[string]any{
-			"id": inode.Parent.Id,
+			"id":   inode.Parent.Id,
 			"name": inode.Parent.FullName(),
 		}
 	}

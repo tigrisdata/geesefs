@@ -106,7 +106,7 @@ func (inode *Inode) ResizeUnlocked(newSize uint64, finalizeFlushed bool) {
 			// So... we have to first finish the upload to be able to truncate it
 			inode.pauseWriters++
 			inode.mu.Unlock()
-			inode.SyncFile()
+			_ = inode.SyncFile()
 			inode.mu.Lock()
 			inode.pauseWriters--
 			if inode.readCond != nil {
@@ -118,7 +118,10 @@ func (inode *Inode) ResizeUnlocked(newSize uint64, finalizeFlushed bool) {
 		// Zero fill extended region
 		_, allocated = inode.buffers.ZeroRange(inode.Attributes.Size, newSize-inode.Attributes.Size)
 	}
-	inode.fs.bufferPool.Use(allocated, true)
+	err := inode.fs.bufferPool.Use(allocated, true)
+	if err != nil {
+		log.Errorf("resizeUnlocked: use error %v: %v", inode.FullName(), err)
+	}
 	inode.Attributes.Size = newSize
 }
 
@@ -155,7 +158,10 @@ func (fh *FileHandle) WriteFile(offset int64, data []byte, copyData bool) (err e
 
 	if fh.inode.CacheState == ST_DELETED || fh.inode.CacheState == ST_DEAD {
 		// Oops, it's a deleted file. We don't support changing invisible files
-		fh.inode.fs.bufferPool.Use(-int64(len(data)), false)
+		err = fh.inode.fs.bufferPool.Use(-int64(len(data)), false)
+		if err != nil {
+			log.Errorf("writeFile: use error %v: %v", fh.inode.FullName(), err)
+		}
 		fh.inode.mu.Unlock()
 		return syscall.ENOENT
 	}
@@ -198,8 +204,9 @@ func (inode *Inode) OpenCacheFD() error {
 	fs := inode.fs
 	if inode.DiskCacheFD == nil {
 		cacheFileName := fs.flags.CachePath + "/" + inode.FullName()
-		os.MkdirAll(path.Dir(cacheFileName), fs.flags.CacheFileMode|((fs.flags.CacheFileMode&0777)>>2))
 		var err error
+		err = os.MkdirAll(path.Dir(cacheFileName), fs.flags.CacheFileMode|((fs.flags.CacheFileMode&0777)>>2))
+		log.Errorf("Couldn't mkdir %v: %v", cacheFileName, err)
 		inode.DiskCacheFD, err = os.OpenFile(cacheFileName, os.O_RDWR|os.O_CREATE, fs.flags.CacheFileMode)
 		if err != nil {
 			log.Errorf("Couldn't open %v: %v", cacheFileName, err)
@@ -296,7 +303,10 @@ func (inode *Inode) LoadRange(offset, size uint64, readAheadSize uint64, ignoreM
 			allocated, err := inode.loadFromDisk(diskRanges)
 			// Correct memory usage without the inode lock
 			inode.mu.Unlock()
-			inode.fs.bufferPool.Use(allocated, true)
+			err1 := inode.fs.bufferPool.Use(allocated, true)
+			if err1 != nil {
+				log.Errorf("loadRange: use error %v", err1)
+			}
 			inode.mu.Lock()
 			// Return on error
 			if err != nil {
@@ -359,7 +369,10 @@ func (inode *Inode) retryRead(cloud StorageBackend, key string, offset, size uin
 		return err
 	})
 	if allocated != int64(size) {
-		inode.fs.bufferPool.Use(int64(allocated)-int64(size), true)
+		err1 := inode.fs.bufferPool.Use(int64(allocated)-int64(size), true)
+		if err1 != nil {
+			log.Errorf("retryRead: use error %v: %v", inode.FullName(), err1)
+		}
 	}
 	inode.mu.Lock()
 	inode.buffers.RemoveLoading(offset, size)
@@ -569,9 +582,7 @@ func (fh *FileHandle) ReadFile(sOffset int64, sLen int64) (data [][]byte, bytesR
 
 	// return cached buffers directly without copying
 	data, _, err = fh.inode.buffers.GetData(offset, size, false)
-	if err != nil && requestErr != nil {
-		return nil, 0, requestErr
-	} else if err != nil {
+	if err != nil {
 		return nil, 0, syscall.EIO
 	}
 
@@ -701,7 +712,7 @@ func (inode *Inode) sendUpload(priority int) bool {
 
 	if smallFile && inode.mpu == nil {
 		// Don't flush small files with active file handles (if not under memory pressure)
-		if inode.IsFlushing == 0 && (inode.fileHandles == 0 || inode.forceFlush || atomic.LoadInt32(&inode.fs.wantFree) > 0) {
+		if inode.IsFlushing == 0 && (atomic.LoadInt32(&inode.fileHandles) == 0 || inode.forceFlush || atomic.LoadInt32(&inode.fs.wantFree) > 0) {
 			// Don't accidentally trigger a parallel multipart flush
 			inode.IsFlushing += inode.fs.flags.MaxParallelParts
 			atomic.AddInt64(&inode.fs.stats.flushes, 1)
@@ -734,7 +745,7 @@ func (inode *Inode) sendUpload(priority int) bool {
 
 	canComplete = canComplete && !inode.IsRangeLocked(0, inode.Attributes.Size, true)
 
-	if canComplete && (inode.fileHandles == 0 || inode.forceFlush || atomic.LoadInt32(&inode.fs.wantFree) > 0) {
+	if canComplete && (atomic.LoadInt32(&inode.fileHandles) == 0 || inode.forceFlush || atomic.LoadInt32(&inode.fs.wantFree) > 0) {
 		// Complete the multipart upload
 		inode.IsFlushing += inode.fs.flags.MaxParallelParts
 		atomic.AddInt64(&inode.fs.stats.flushes, 1)
@@ -973,14 +984,14 @@ func (inode *Inode) beginMultipartUpload(cloud StorageBackend, key string) {
 		Key:         key,
 		ContentType: inode.fs.flags.GetMimeType(key),
 	}
+	resp, err := cloud.MultipartBlobBegin(params)
+	inode.mu.Lock()
 	if inode.userMetadataDirty != 0 {
 		params.Metadata = escapeMetadata(inode.userMetadata)
 		// userMetadataDirty == 1 indicates that metadata wasn't changed
 		// since the multipart upload was initiated
 		inode.userMetadataDirty = 1
 	}
-	resp, err := cloud.MultipartBlobBegin(params)
-	inode.mu.Lock()
 	inode.recordFlushError(err)
 	if err != nil {
 		log.Warnf("Failed to initiate multipart upload for %v: %v", key, err)
@@ -993,7 +1004,7 @@ func (inode *Inode) beginMultipartUpload(cloud StorageBackend, key string) {
 func (inode *Inode) sendUploadParts(priority int) (bool, bool) {
 	initiated := false
 	shouldComplete := true
-	flushInode := inode.fileHandles == 0 || inode.forceFlush
+	flushInode := atomic.LoadInt32(&inode.fileHandles) == 0 || inode.forceFlush
 	wantFree := atomic.LoadInt32(&inode.fs.wantFree) > 0
 	var partlyZero []uint64
 	var fullyZero []uint64
@@ -1383,7 +1394,10 @@ func (inode *Inode) sendPatch(offset, size uint64, r io.ReadSeeker, partSize uin
 
 func (inode *Inode) discardChanges(offset, size uint64) {
 	allocated := inode.buffers.RemoveRange(offset, size, nil)
-	inode.fs.bufferPool.Use(allocated, true)
+	err := inode.fs.bufferPool.Use(allocated, true)
+	if err != nil {
+		log.Errorf("discardChanges: use error %v", err)
+	}
 }
 
 func (inode *Inode) isStillDirty() bool {
@@ -1396,15 +1410,19 @@ func (inode *Inode) isStillDirty() bool {
 func (inode *Inode) resetCache() {
 	// Drop all buffers including dirty ones
 	allocated := inode.buffers.RemoveRange(0, 0xffffffffffffffff, nil)
-	inode.fs.bufferPool.Use(allocated, true)
+	err := inode.fs.bufferPool.Use(allocated, true)
+	if err != nil {
+		log.Errorf("Use error %v", err)
+	}
 	// Also remove the cache file from disk, if present
 	if inode.OnDisk {
+		cacheFileName := inode.fs.flags.CachePath + "/" + inode.FullName()
 		if inode.DiskCacheFD != nil {
-			inode.DiskCacheFD.Close()
+			err := inode.DiskCacheFD.Close()
+			log.Errorf("resetCache: close error %v: %v", cacheFileName, err)
 			inode.DiskCacheFD = nil
 			inode.fs.diskFdQueue.DeleteFD(inode)
 		}
-		cacheFileName := inode.fs.flags.CachePath + "/" + inode.FullName()
 		err := os.Remove(cacheFileName)
 		if err != nil {
 			log.Errorf("Couldn't remove %v: %v", cacheFileName, err)
@@ -1801,7 +1819,9 @@ func (inode *Inode) updateFromFlush(size uint64, etag *string, lastModified *tim
 		inode.Attributes.Ctime = *lastModified
 	}
 	inode.knownSize = size
-	inode.knownETag = *etag
+	if etag != nil {
+		inode.knownETag = *etag
+	}
 	inode.SetAttrTime(time.Now())
 }
 
@@ -1829,7 +1849,7 @@ func (inode *Inode) SyncFile() (err error) {
 		}
 		inode.fs.flusherMu.Unlock()
 	}
-	inode.logFuse("Done SyncFile")
+	inode.logFuse("Done SyncFile", err)
 	return
 }
 

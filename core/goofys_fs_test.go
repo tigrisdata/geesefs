@@ -495,8 +495,8 @@ func (s *GoofysTest) testReadMyOwnWriteFuse(t *C, externalUpdate bool) {
 	time.Sleep(s.fs.flags.StatCacheTTL)
 
 	root := s.getRoot(t)
-	cloud := &TestBackend{StorageBackend: root.dir.cloud}
-	root.dir.cloud = cloud
+	cloud := NewTestBackend(&TestBackend{StorageBackend: root.fs.getCloud()})
+	root.fs.setCloud(cloud)
 
 	fh, err = os.Open(filePath)
 	t.Assert(err, IsNil)
@@ -508,7 +508,7 @@ func (s *GoofysTest) testReadMyOwnWriteFuse(t *C, externalUpdate bool) {
 		// return the mtime, so the open above will think the
 		// file is updated and not re-use cache
 		if _, adlv1 := s.cloud.(*ADLv1); !adlv1 {
-			cloud.err = syscall.EINVAL
+			cloud.SetErr(syscall.EINVAL)
 		}
 	} else {
 		// if there was externalUpdate, we wrote our own
@@ -558,7 +558,7 @@ func (s *GoofysTest) TestSlurpLookupNoCloud(t *C) {
 	flags := cfg.DefaultFlags()
 
 	// Use mocked backend
-	backend := &TestBackend{
+	backend := NewTestBackend(&TestBackend{
 		err: syscall.ENOSYS,
 		ListBlobsFunc: func(param *ListBlobsInput) (*ListBlobsOutput, error) {
 			p, d, a := NilStr(param.Prefix), NilStr(param.Delimiter), NilStr(param.StartAfter)
@@ -583,7 +583,7 @@ func (s *GoofysTest) TestSlurpLookupNoCloud(t *C) {
 			}
 			return nil, syscall.ENOSYS
 		},
-	}
+	})
 	s.cloud = backend
 	s.fs, err = newGoofys(context.Background(), "test", flags, func(string, *cfg.FlagStorage) (StorageBackend, error) {
 		return backend, nil
@@ -607,7 +607,7 @@ func (s *GoofysTest) TestListParallelExpireNoCloud(t *C) {
 
 	// Use mocked backend
 	testCount := 9800
-	backend := &TestBackend{
+	backend := NewTestBackend(&TestBackend{
 		err: syscall.ENOSYS,
 		ListBlobsFunc: func(param *ListBlobsInput) (*ListBlobsOutput, error) {
 			p, d, a := NilStr(param.Prefix), NilStr(param.Delimiter), NilStr(param.StartAfter)
@@ -652,7 +652,7 @@ func (s *GoofysTest) TestListParallelExpireNoCloud(t *C) {
 			}
 			return nil, syscall.ENOSYS
 		},
-	}
+	})
 	s.cloud = backend
 	s.fs, err = newGoofys(context.Background(), "test", flags, func(string, *cfg.FlagStorage) (StorageBackend, error) {
 		return backend, nil
@@ -692,7 +692,7 @@ func (s *GoofysTest) TestListSlurpExpireNoCloud(t *C) {
 	flags.EntryLimit = 100
 
 	// Use mocked backend
-	backend := &TestBackend{
+	backend := NewTestBackend(&TestBackend{
 		err: syscall.ENOSYS,
 		ListBlobsFunc: func(param *ListBlobsInput) (*ListBlobsOutput, error) {
 			p, d, a := NilStr(param.Prefix), NilStr(param.Delimiter), NilStr(param.StartAfter)
@@ -758,7 +758,7 @@ func (s *GoofysTest) TestListSlurpExpireNoCloud(t *C) {
 			}
 			return nil, syscall.ENOSYS
 		},
-	}
+	})
 	s.cloud = backend
 	s.fs, err = newGoofys(context.Background(), "test", flags, func(string, *cfg.FlagStorage) (StorageBackend, error) {
 		return backend, nil
