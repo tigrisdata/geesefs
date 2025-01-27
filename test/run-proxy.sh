@@ -20,7 +20,7 @@ if [ $CLOUD == "s3" ]; then
         echo jclouds.provider=filesystem >>test/s3proxy_test.properties
         echo jclouds.filesystem.basedir=/tmp/s3proxy >>test/s3proxy_test.properties
     fi
-    PROXY_BIN="java --add-opens java.base/java.lang=ALL-UNNAMED -jar s3proxy.jar --properties test/s3proxy_test.properties"
+    PROXY_BIN="java -jar s3proxy.jar --properties test/s3proxy_test.properties"
     export AWS_ACCESS_KEY_ID=foo
     export AWS_SECRET_ACCESS_KEY=bar
     export ENDPOINT=http://localhost:$PROXY_PORT
@@ -44,6 +44,10 @@ if [ "$PROXY_BIN" != "" ]; then
     $PROXY_BIN &
     PROXY_PID=$!
     export EMULATOR=1
+	while ! curl "$ENDPOINT"; do
+		echo "Waiting for proxy to start"
+		sleep 1
+	done
 elif [ "$TIMEOUT" == "10m" ]; then
     # higher timeout for testing to real cloud
     TIMEOUT=45m
