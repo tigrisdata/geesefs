@@ -856,17 +856,18 @@ func (fs *ClusterFsFuse) ForgetInode(ctx context.Context, op *fuseops.ForgetInod
 			inode.UpgradeToStateLock()
 			forget := inode.DeRef(int64(op.N))
 			if forget {
+				id := inode.Id
 				fs.Conns.Broad(func(ctx context.Context, conn *grpc.ClientConn) error {
 					req := &pb.ForgetInode2Request{
-						InodeId: uint64(inode.Id),
+						InodeId: uint64(id),
 					}
-					_, err = pb.NewFsGrpcClient(conn).ForgetInode2(ctx, req)
-					return err
+					_, err1 := pb.NewFsGrpcClient(conn).ForgetInode2(ctx, req)
+					return err1
 				})
 			}
 			inode.DowngradeToKeepOwnerLock()
 		},
-		func(inode *Inode, inodeOwner NodeId) *pb.Owner {
+		func(_ *Inode, inodeOwner NodeId) *pb.Owner {
 			var resp *pb.ForgetInodeResponse
 			err = fs.Conns.Unary(inodeOwner, func(ctx context.Context, conn *grpc.ClientConn) error {
 				req := &pb.ForgetInodeRequest{

@@ -445,32 +445,32 @@ func withHeader(req *request.Request, key, value string) {
 
 func (s *S3Backend) ListObjectsV2(params *s3.ListObjectsV2Input) (*s3.ListObjectsV2Output, string, error) {
 	/*
-	if s.config.ListV1Ext {
-		in := s3.ListObjectsV1ExtInput(*params)
-		req, resp := s.S3.ListObjectsV1ExtRequest(&in)
-		if s.flags.TigrisPrefetch {
-			withHeader(req, "X-Tigris-Prefetch", "true")
-		}
-		err := req.Send()
-		if err != nil {
-			if awsErr, ok := err.(awserr.Error); ok {
-				if awsErr.Code() == "InvalidArgument" || awsErr.Code() == "NotImplemented" {
-					// Fallback to list v1
-					s.config.ListV1Ext = false
-					return s.ListObjectsV2(params)
+		if s.config.ListV1Ext {
+			in := s3.ListObjectsV1ExtInput(*params)
+			req, resp := s.S3.ListObjectsV1ExtRequest(&in)
+			if s.flags.TigrisPrefetch {
+				withHeader(req, "X-Tigris-Prefetch", "true")
+			}
+			err := req.Send()
+			if err != nil {
+				if awsErr, ok := err.(awserr.Error); ok {
+					if awsErr.Code() == "InvalidArgument" || awsErr.Code() == "NotImplemented" {
+						// Fallback to list v1
+						s.config.ListV1Ext = false
+						return s.ListObjectsV2(params)
+					}
+				}
+				return nil, "", err
+			}
+			out := s3.ListObjectsV2Output(*resp)
+			for _, obj := range out.Contents {
+				// Make non-nil maps for all objects so that we know metadata is empty
+				if obj.UserMetadata == nil {
+					obj.UserMetadata = make(map[string]*string)
 				}
 			}
-			return nil, "", err
-		}
-		out := s3.ListObjectsV2Output(*resp)
-		for _, obj := range out.Contents {
-			// Make non-nil maps for all objects so that we know metadata is empty
-			if obj.UserMetadata == nil {
-				obj.UserMetadata = make(map[string]*string)
-			}
-		}
-		return &out, s.getRequestId(req), nil
-	} else
+			return &out, s.getRequestId(req), nil
+		} else
 	*/
 	if s.config.ListV2 {
 		req, resp := s.S3.ListObjectsV2Request(params)
@@ -606,7 +606,7 @@ func (s *S3Backend) ListBlobs(param *ListBlobsInput) (*ListBlobsOutput, error) {
 			LastModified: i.LastModified,
 			Size:         uint64(*i.Size),
 			StorageClass: i.StorageClass,
-//			Metadata:     i.UserMetadata,
+			//			Metadata:     i.UserMetadata,
 		})
 	}
 
@@ -1028,33 +1028,33 @@ func (s *S3Backend) selectStorageClass(size *uint64) *string {
 func (s *S3Backend) PatchBlob(param *PatchBlobInput) (*PatchBlobOutput, error) {
 	return nil, fmt.Errorf("not implemented")
 	/*
-	patch := &s3.PatchObjectInput{
-		Bucket:       &s.bucket,
-		Key:          &param.Key,
-		ContentRange: PString(fmt.Sprintf("bytes %d-%d/*", param.Offset, param.Offset+param.Size-1)),
-		Body:         param.Body,
-	}
-	if param.AppendPartSize > 0 {
-		patch.PatchAppendPartSize = &param.AppendPartSize
-	}
-
-	req, resp := s.PatchObjectRequest(patch)
-	err := req.Send()
-	if err != nil {
-		if awsErr, ok := err.(awserr.Error); ok {
-			if awsErr.Code() == "NotImplemented" {
-				return nil, syscall.ENOSYS
-			}
+		patch := &s3.PatchObjectInput{
+			Bucket:       &s.bucket,
+			Key:          &param.Key,
+			ContentRange: PString(fmt.Sprintf("bytes %d-%d/*", param.Offset, param.Offset+param.Size-1)),
+			Body:         param.Body,
 		}
-		return nil, err
-	}
+		if param.AppendPartSize > 0 {
+			patch.PatchAppendPartSize = &param.AppendPartSize
+		}
 
-	return &PatchBlobOutput{
-		ETag:         resp.Object.ETag,
-		LastModified: resp.Object.LastModified,
-		RequestId:    s.getRequestId(req),
-	}, nil
-	 */
+		req, resp := s.PatchObjectRequest(patch)
+		err := req.Send()
+		if err != nil {
+			if awsErr, ok := err.(awserr.Error); ok {
+				if awsErr.Code() == "NotImplemented" {
+					return nil, syscall.ENOSYS
+				}
+			}
+			return nil, err
+		}
+
+		return &PatchBlobOutput{
+			ETag:         resp.Object.ETag,
+			LastModified: resp.Object.LastModified,
+			RequestId:    s.getRequestId(req),
+		}, nil
+	*/
 }
 
 func (s *S3Backend) MultipartBlobBegin(param *MultipartBlobBeginInput) (*MultipartBlobCommitInput, error) {
