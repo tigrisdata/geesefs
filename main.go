@@ -16,20 +16,18 @@
 package main
 
 import (
-	"github.com/yandex-cloud/geesefs/core/cfg"
-	"github.com/yandex-cloud/geesefs/core"
-
+	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"time"
 
-	"context"
-
 	"github.com/urfave/cli"
+	"github.com/yandex-cloud/geesefs/core"
+	"github.com/yandex-cloud/geesefs/core/cfg"
 
-	"net/http"
 	_ "net/http/pprof"
 )
 
@@ -122,6 +120,12 @@ func main() {
 		}
 		cfg.InitLoggers(logFile)
 
+		// Mount the file system.
+		fs, mfs, err := mount(
+			context.Background(),
+			bucketName,
+			flags)
+
 		pprof := flags.PProf
 		if pprof == "" && os.Getenv("PPROF") != "" {
 			pprof = os.Getenv("PPROF")
@@ -130,17 +134,11 @@ func main() {
 			go func() {
 				addr := pprof
 				if strings.Index(addr, ":") == -1 {
-					addr = "127.0.0.1:"+addr
+					addr = "127.0.0.1:" + addr
 				}
 				log.Println(http.ListenAndServe(addr, nil))
 			}()
 		}
-
-		// Mount the file system.
-		fs, mfs, err := mount(
-			context.Background(),
-			bucketName,
-			flags)
 
 		if err != nil {
 			if !flags.Foreground {

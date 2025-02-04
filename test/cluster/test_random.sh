@@ -19,13 +19,13 @@ _cluster_setup() {
   touch "$TEST_ARTIFACTS/test_random/log1" "$TEST_ARTIFACTS/test_random/log2" "$TEST_ARTIFACTS/test_random/log3"
 
   MNT1=$(mktemp -d)
-  _mount "$MNT1" -f --debug_fuse --debug_grpc --log-file="$TEST_ARTIFACTS/test_random/log1" --pprof=6060 --cluster-me=1:localhost:1337 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339
+  _mount "$MNT1" -f --log-file="$TEST_ARTIFACTS/test_random/log1" --pprof=6060 --cluster-me=1:localhost:1337 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339 #--debug_fuse --debug_grpc
 
   MNT2=$(mktemp -d)
-  _mount "$MNT2" -f --debug_fuse --debug_grpc --log-file="$TEST_ARTIFACTS/test_random/log2" --pprof=6070 --cluster-me=2:localhost:1338 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339
+  _mount "$MNT2" -f --log-file="$TEST_ARTIFACTS/test_random/log2" --pprof=6070 --cluster-me=2:localhost:1338 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339
 
   MNT3=$(mktemp -d)
-  _mount "$MNT3" -f --debug_fuse --debug_grpc --log-file="$TEST_ARTIFACTS/test_random/log3" --pprof=6080 --cluster-me=3:localhost:1339 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339
+  _mount "$MNT3" -f --log-file="$TEST_ARTIFACTS/test_random/log3" --pprof=6080 --cluster-me=3:localhost:1339 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339
 
   rm -rf "${MNT1:?}/*"
   rm -rf "${MNT2:?}/*"
@@ -39,6 +39,9 @@ _cleanup() {
   _umount "$MNT3"
   _umount "$MNT2"
   _umount "$MNT1"
+  cat "$TEST_ARTIFACTS/test_random/log1"
+  cat "$TEST_ARTIFACTS/test_random/log2"
+  cat "$TEST_ARTIFACTS/test_random/log3"
 }
 
 _test() {
