@@ -30,7 +30,7 @@ import (
 	"github.com/urfave/cli"
 )
 
-const GEESEFS_VERSION = "0.42.4"
+var Version = "0.42.4"
 
 var flagCategories map[string]string
 
@@ -737,7 +737,7 @@ MISC OPTIONS:
 
 	app = &cli.App{
 		Name:     "geesefs",
-		Version:  GEESEFS_VERSION,
+		Version:  Version,
 		Usage:    "Mount an S3 bucket locally",
 		HideHelp: true,
 		Writer:   os.Stderr,

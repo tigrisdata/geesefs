@@ -1,3 +1,7 @@
+[![unittests](https://github.com/tigrisdata/geesefs/workflows/tests/badge.svg)]()
+[![xfstests](https://github.com/tigrisdata/geesefs/workflows/xfstests/badge.svg)]()
+[![cluster-test](https://github.com/tigrisdata/geesefs/workflows/cluster_test/badge.svg)]()
+
 <img src="doc/geesefs.png" height="64" width="64" align="middle" />
 
 GeeseFS is a high-performance, POSIX-ish S3

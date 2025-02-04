@@ -264,7 +264,7 @@ func (s *S3Backend) newS3() {
 	s.S3.Handlers.Build.RemoveByName("core.SDKVersionUserAgentHandler")
 	s.S3.Handlers.Build.PushBackNamed(request.NamedHandler{
 		Name: "core.SDKVersionUserAgentHandler",
-		Fn: request.MakeAddToUserAgentHandler("GeeseFS", cfg.GEESEFS_VERSION,
+		Fn: request.MakeAddToUserAgentHandler("GeeseFS", cfg.Version,
 			runtime.Version(), runtime.GOOS, runtime.GOARCH),
 	})
 }

@@ -1,4 +1,4 @@
-export CGO_ENABLED=0
+VERSION=$(shell git describe --tags --always)
 
 run-test: s3proxy.jar build-debug
 	./test/run-tests.sh
@@ -20,13 +20,13 @@ get-deps: s3proxy.jar
 	go get -t ./...
 
 build:
-	go build -ldflags "-X main.Version=`git rev-parse HEAD`"
+	go build -ldflags "github.com/tigrisdata/geesefs/core/cfg.Version=$(VERSION)"
 
 build-debug:
 	CGO_ENABLED=1 go build -race -ldflags "-X main.Version=`git rev-parse HEAD`"
 
 install:
-	go install -ldflags "-X main.Version=`git rev-parse HEAD`"
+	go install -ldflags "github.com/tigrisdata/geesefs/core/cfg.Version=$(VERSION)"
 
 
 .PHONY: protoc

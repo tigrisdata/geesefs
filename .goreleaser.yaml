@@ -1,0 +1,36 @@
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    binary: geesefs
+    ldflags:
+      - -w -extldflags '-static'
+      - -X 'github.com/tigrisdata/geesefs/main.Version={{.Version}}'
+
+archives:
+  - format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "geesefs_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: 'checksums.txt'
+signs:
+  - artifacts: checksum
+changelog:
+  skip: true
+
+nfpms:
+  - formats:
+      - apk
+      - deb
+      - rpm
+      - termux.deb
+    file_name_template: "tigris_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    maintainer: Yevgeniy Firsov <firsov@tigrisdata.com>
