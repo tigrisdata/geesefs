@@ -618,6 +618,8 @@ func (fs *ClusterFs) trySteal(inode *Inode) (success bool, err error) {
 				return err
 			})
 			if err != nil {
+				inode.KeepOwnerLock()
+				fuseLog.Infof("could not steal inode %v(%v): %v", inode.FullName(), inode.Id, err)
 				return false, err
 			}
 
@@ -689,6 +691,9 @@ func (fs *ClusterFs) steal(inode *Inode) error {
 
 // REQUIRED_LOCK(inode.ChangeOwnerLock)
 func (fs *ClusterFs) tryYield(inode *Inode, newOwner NodeId) *pb.StolenInode {
+	inode.mu.Lock()
+	defer inode.mu.Unlock()
+
 	if inode.CacheState == ST_CACHED && inode.fileHandles == 0 {
 		if inode.isDir() {
 			var children []*pb.Inode
@@ -734,7 +739,9 @@ func (fs *ClusterFs) tryYield(inode *Inode, newOwner NodeId) *pb.StolenInode {
 			} else {
 				fuseLog.Infof("could not yield inode %v: len(inode.dir.DeletedChildren) == %v",
 					inode.Id, len(inode.dir.DeletedChildren))
+				inode.mu.Unlock()
 				inode.TryFlush(MAX_FLUSH_PRIORITY)
+				inode.mu.Lock()
 				return nil
 			}
 		} else {
@@ -760,7 +767,9 @@ func (fs *ClusterFs) tryYield(inode *Inode, newOwner NodeId) *pb.StolenInode {
 	} else {
 		fuseLog.Infof("could not yield inode %v: inode.CacheState == %v inode.fileHandles == %v",
 			inode.Id, inode.CacheState, inode.fileHandles)
+		inode.mu.Unlock()
 		inode.TryFlush(MAX_FLUSH_PRIORITY)
+		inode.mu.Lock()
 		return nil
 	}
 }
@@ -994,8 +1003,8 @@ func (fs *ClusterFs) route(
 				inode.KeepOwnerUnlock()
 				return
 			} else {
-				inode.KeepOwnerUnlock()
 				fuseLog.Debugf("this fs is owner of inode %v, but it is not ready", inode.info())
+				inode.KeepOwnerUnlock()
 				time.Sleep(READY_OWNER_BACKOFF)
 				continue
 			}
@@ -1004,8 +1013,8 @@ func (fs *ClusterFs) route(
 			inode.KeepOwnerUnlock()
 			anotherOwner := tryExecRemotely(inode, inodeOwner)
 			if anotherOwner != nil {
-				fuseLog.Debugf("fs %v is not owner of inode %v, apply new owner %+v and retry", inodeOwner, inode.info(), anotherOwner)
 				inode.ChangeOwnerLock()
+				fuseLog.Debugf("fs %v is not owner of inode %v, apply new owner %+v and retry", inodeOwner, inode.info(), anotherOwner)
 				inode.applyOwner(anotherOwner)
 				inode.ChangeOwnerUnlock()
 				continue

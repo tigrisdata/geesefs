@@ -16,7 +16,5 @@ jobs:
       run: env CGO_ENABLED=0 go build -o geesefs-linux-amd64 -v && ln -s geesefs-linux-amd64 geesefs
 
     - name: Run xfstests
-      # Often crashes in CI due to memory limits
-      continue-on-error: true
       run: make run-xfstests
       timeout-minutes: 10
