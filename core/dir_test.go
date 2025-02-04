@@ -155,7 +155,7 @@ func (s *DirTest) TestIntelligentListCut(t *C) {
 	}
 	listCalled := 0
 	checkedPrefix := "w-o-w/2019/"
-	cloud := &TestBackend{
+	cloud := NewTestBackend(&TestBackend{
 		ListBlobsFunc: func(param *ListBlobsInput) (*ListBlobsOutput, error) {
 			t.Assert(NilStr(param.StartAfter), Equals, "w-o-w/2019.\xEF\xBF\xBD")
 			t.Assert(param.MaxKeys, NotNil)
@@ -168,7 +168,7 @@ func (s *DirTest) TestIntelligentListCut(t *C) {
 				},
 			}, nil
 		},
-	}
+	})
 	flags := cfg.DefaultFlags()
 	lastName, err = intelligentListCut(resp, flags, cloud, "w-o-w/")
 	t.Assert(lastName, Equals, "w-o-w/2019-0005")

@@ -117,18 +117,18 @@ type Goofys struct {
 
 	NotifyCallback func(notifications []interface{})
 
-	cloud StorageBackend
+	cloud atomic.Pointer[StorageBackend]
 }
 
 func (g *Goofys) setCloud(cloud StorageBackend) {
-	g.cloud = cloud
+	g.cloud.Store(&cloud)
 }
 
 func (g *Goofys) getCloud() StorageBackend {
 	if g == nil {
 		return nil
 	}
-	return g.cloud
+	return *g.cloud.Load()
 }
 
 type OpStats struct {

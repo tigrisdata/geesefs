@@ -67,6 +67,8 @@ import (
 )
 
 func (s *GoofysTest) getRoot(t *C) (inode *Inode) {
+	s.fs.mu.Lock()
+	defer s.fs.mu.Unlock()
 	inode = s.fs.inodes[fuseops.RootInodeID]
 	t.Assert(inode, NotNil)
 	return
@@ -509,7 +511,7 @@ func (s *GoofysTest) TestWriteLargeTruncateMem20M(t *C) {
 
 	root := s.getRoot(t)
 	s3 := root.fs.getCloud()
-	cloud := &TestBackend{StorageBackend: s3}
+	cloud := NewTestBackend(&TestBackend{StorageBackend: s3})
 	cloud.MultipartBlobAddFunc = func(param *MultipartBlobAddInput) (*MultipartBlobAddOutput, error) {
 		if param.PartNumber > 20 {
 			return nil, syscall.ENOSYS
@@ -612,7 +614,7 @@ func (s *GoofysTest) TestMultiStreamMem100M(t *C) {
 
 	root := s.getRoot(t)
 	s3 := root.fs.getCloud()
-	cloud := &TestBackend{StorageBackend: s3}
+	cloud := NewTestBackend(&TestBackend{StorageBackend: s3})
 	// Check that all uploads work optimally and don't complete until the end
 	cloud.MultipartBlobCommitFunc = func(param *MultipartBlobCommitInput) (*MultipartBlobCommitOutput, error) {
 		t.Fatal("Uploads should not be completed in the middle of upload")
