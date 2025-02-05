@@ -1,4 +1,4 @@
-name: Test
+name: Cluster Test
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ on:
     - main
 
 jobs:
-  cluster-tests:
+  test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4

@@ -1,4 +1,4 @@
-name: Test
+name: XFS Tests
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ on:
     - main
 
 jobs:
-  xfstests:
+  test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
