@@ -1,13 +1,14 @@
-name: Test
+name: Unittests
 
 on:
+  workflow_call:
   pull_request:
   push:
     branches:
     - main
 
 jobs:
-  unittests:
+  test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4

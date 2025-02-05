@@ -1,13 +1,14 @@
-name: Test
+name: Cluster Test
 
 on:
+  workflow_call:
   pull_request:
   push:
     branches:
     - main
 
 jobs:
-  cluster-tests:
+  test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
