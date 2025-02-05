@@ -1,13 +1,14 @@
-name: Test
+name: XFS Tests
 
 on:
+  workflow_call:
   pull_request:
   push:
     branches:
     - main
 
 jobs:
-  xfstests:
+  test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4

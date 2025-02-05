@@ -18,6 +18,8 @@ s3proxy.jar:
 
 get-deps: s3proxy.jar
 	go get -t ./...
+	/bin/bash scripts/install_build_deps.sh
+	/bin/bash scripts/install_test_deps.sh
 
 build:
 	go build -ldflags "github.com/tigrisdata/geesefs/core/cfg.Version=$(VERSION)"
@@ -28,6 +30,9 @@ build-debug:
 install:
 	go install -ldflags "github.com/tigrisdata/geesefs/core/cfg.Version=$(VERSION)"
 
+# Setup local development environment.
+setup: get-deps
+	git config core.hooksPath ./.gitconfig/hooks
 
 .PHONY: protoc
 protoc:

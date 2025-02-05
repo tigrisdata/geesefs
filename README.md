@@ -1,6 +1,6 @@
-[![unittests](https://github.com/tigrisdata/geesefs/workflows/tests/badge.svg)]()
-[![xfstests](https://github.com/tigrisdata/geesefs/workflows/xfstests/badge.svg)]()
-[![cluster-test](https://github.com/tigrisdata/geesefs/workflows/cluster_test/badge.svg)]()
+[![unittests](https://github.com/tigrisdata/geesefs/actions/workflows/test.yaml/badge.svg)]()
+[![xfstests](https://github.com/tigrisdata/geesefs/actions/workflows/xfstests.yaml/badge.svg)]()
+[![cluster-test](https://github.com/tigrisdata/geesefs/actions/workflows/cluster_test.yaml/badge.svg)]()
 
 <img src="doc/geesefs.png" height="64" width="64" align="middle" />
 
