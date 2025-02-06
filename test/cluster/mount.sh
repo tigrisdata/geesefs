@@ -1,6 +1,7 @@
 #!/bin/bash
 
-FS_BIN="${FS_BIN:-"../../geesefs"}"
+p=`dirname $0`
+FS_BIN="${FS_BIN:-"$p/../../geesefs"}"
 
 _mount() {
   local MNT_DIR=$1
@@ -12,7 +13,7 @@ _mount() {
   --cluster \
   "$@" \
   "$BUCKET_NAME" \
-  "$MNT_DIR"
+  "$MNT_DIR" &
 }
 
 _umount() {

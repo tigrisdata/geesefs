@@ -1,11 +1,13 @@
 #!/bin/bash
 
-. mount.sh
+set -o pipefail
+
+. `dirname $0`/mount.sh
 
 if [[ "$AWS_ACCESS_KEY_ID" != "" && "$AWS_SECRET_ACCESS_KEY" != "" ]]; then
-  . s3.sh
+  . `dirname $0`/s3.sh
 else
-  . proxy.sh
+  . `dirname $0`/proxy.sh
 fi
 
 

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -x
+
 cd $(dirname $0)/..
 
 export CLOUD=${CLOUD:-s3}
@@ -18,7 +20,7 @@ if [ $CLOUD == "s3" ]; then
         echo jclouds.provider=filesystem >>test/s3proxy_test.properties
         echo jclouds.filesystem.basedir=/tmp/s3proxy >>test/s3proxy_test.properties
     fi
-    PROXY_BIN="java -jar s3proxy.jar --properties test/s3proxy_test.properties"
+    PROXY_BIN="java --add-opens java.base/java.lang=ALL-UNNAMED -jar s3proxy.jar --properties test/s3proxy_test.properties"
     export AWS_ACCESS_KEY_ID=foo
     export AWS_SECRET_ACCESS_KEY=bar
     export ENDPOINT=http://localhost:$PROXY_PORT

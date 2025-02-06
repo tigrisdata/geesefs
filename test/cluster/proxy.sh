@@ -13,7 +13,9 @@ jclouds.credential=bar
 jclouds.regions=us-west-2
 EOF
 
-PROXY_BIN="java -DLOG_LEVEL=trace -Djclouds.wire=debug -jar s3proxy.jar --properties s3proxy.properties"
+p=`dirname $0`
+
+PROXY_BIN="java --add-opens java.base/java.lang=ALL-UNNAMED -DLOG_LEVEL=trace -Djclouds.wire=debug -jar s3proxy.jar --properties $p/s3proxy.properties"
 export S3CMD_ARGS="--access_key=foo --secret_key=bar"
 export AWS_ACCESS_KEY_ID=foo
 export AWS_SECRET_ACCESS_KEY=bar

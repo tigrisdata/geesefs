@@ -1,3 +1,28 @@
+geesefs (0.42.4) unstable; urgency=medium
+
+  * Disable PATCH of empty files
+
+ -- Vitaliy Filippov <vitaliff@yandex-team.ru>  Fri, 10 Jan 2025 01:41:00 +0300
+
+geesefs (0.42.3) unstable; urgency=medium
+
+  * Add --refresh-dirs option for Windows as an ugly solution to refresh files
+    in Explorer :)
+
+ -- Vitaliy Filippov <vitaliff@yandex-team.ru>  Fri, 29 Nov 2024 15:09:09 +0300
+
+geesefs (0.42.2) unstable; urgency=medium
+
+  * Fix Create on Windows not returning EEXIST for existing files
+
+ -- Vitaliy Filippov <vitaliff@yandex-team.ru>  Wed, 27 Nov 2024 17:18:53 +0300
+
+geesefs (0.42.1) unstable; urgency=medium
+
+  * Disable new FUSE-T on macos (came from jacobsa/fuse library)
+
+ -- Vitaliy Filippov <vitaliff@yandex-team.ru>  Wed, 06 Nov 2024 17:08:21 +0300
+
 geesefs (0.42.0) unstable; urgency=medium
 
   * Create files/directories with correct uid/gid
