@@ -1904,6 +1904,8 @@ func (parent *Inode) LookUpCached(name string) (inode *Inode, err error) {
 	ok := false
 	inode = parent.findChildUnlocked(name)
 	if inode != nil {
+		inode.mu.Lock()
+		defer inode.mu.Unlock()
 		ok = true
 		if expired(inode.AttrTime, parent.fs.flags.StatCacheTTL) {
 			ok = false
