@@ -1,0 +1,17 @@
+[Unit]
+Description=Mount Tigris bucket %i
+After=network-online.target
+
+[Service]
+EnvironmentFile=-/etc/default/geesefs
+EnvironmentFile=-/etc/default/geesefs-%i
+Environment=MOUNT_PREFIX=%h
+Type=oneshot
+ExecStartPre=/bin/mkdir -p ${MOUNT_PREFIX}/mnt/geesefs/%i
+ExecStart=/usr/bin/mount -t fuse.geesefs %i ${MOUNT_PREFIX}/mnt/geesefs/%i
+ExecStop=/usr/bin/umount ${MOUNT_PREFIX}/mnt/geesefs/%i
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target
+

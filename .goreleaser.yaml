@@ -2,6 +2,7 @@ version: 2
 builds:
   - env:
       - CGO_ENABLED=0
+      - ENDPOINT="https://fly.storage.tigris.dev"
     goos:
       - linux
       - windows
@@ -12,7 +13,8 @@ builds:
     binary: geesefs
     ldflags:
       - -w -extldflags '-static'
-      - -X 'github.com/tigrisdata/geesefs/main.Version={{.Version}}'
+      - -X 'github.com/yandex-cloud/geesefs/main.Version={{.Version}}'
+      - -X 'github.com/yandex-cloud/geesefs/main.Endpoint={{.Env.ENDPOINT}}'
 
 archives:
   - format_overrides:
@@ -26,9 +28,19 @@ signs:
   - artifacts: checksum
 
 nfpms:
-  - formats:
+  - maintainer: "Tigrisdata Support <support@tigrisdata.com>"
+    formats:
       - apk
       - deb
       - rpm
     file_name_template: "geesefs_tigris_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    maintainer: Yevgeniy Firsov <firsov@tigrisdata.com>
+    contents:
+      - src: pkg/geesefs@.service
+        dst: /lib/systemd/system/geesefs@.service
+      - src: pkg/geesefs_user@.service
+        dst: /lib/systemd/user/geesefs@.service
+      - src: pkg/defaults
+        dst: /etc/default/geesefs
+    scripts:
+      postinstall: pkg/postinst
+

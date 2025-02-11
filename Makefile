@@ -1,4 +1,7 @@
 VERSION=$(shell git describe --tags --always)
+ENDPOINT ?= "https://fly.storage.tigris.dev"
+
+BUILD_PARAM=-ldflags "-X github.com/yandex-cloud/geesefs/core/cfg.Version=$(VERSION) -X github.com/yandex-cloud/geesefs/core/cfg.DefaultEndpoint=$(ENDPOINT)"
 
 run-test: s3proxy.jar build-debug
 	./test/run-tests.sh
@@ -22,13 +25,13 @@ get-deps: s3proxy.jar
 	/bin/bash scripts/install_test_deps.sh
 
 build:
-	go build -ldflags "github.com/tigrisdata/geesefs/core/cfg.Version=$(VERSION)"
+	go build $(BUILD_PARAM)
 
 build-debug:
-	CGO_ENABLED=1 go build -race -ldflags "-X main.Version=`git rev-parse HEAD`"
+	CGO_ENABLED=1 go build -race $(BUILD_PARAM)
 
 install:
-	go install -ldflags "github.com/tigrisdata/geesefs/core/cfg.Version=$(VERSION)"
+	go install $(BUILD_PARAM)
 
 # Setup local development environment.
 setup: get-deps

@@ -120,6 +120,10 @@ func main() {
 		}
 		cfg.InitLoggers(logFile)
 
+		log.Infof("Starting GeeseFS version %v", cfg.Version)
+		log.Infof("Mounting %v at %v", bucketName, flags.MountPoint)
+		log.Infof("Default uid=%v gid=%v", flags.Uid, flags.Gid)
+
 		// Mount the file system.
 		fs, mfs, err := mount(
 			context.Background(),

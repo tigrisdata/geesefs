@@ -21,6 +21,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -104,7 +105,26 @@ func (c *S3Config) Init() *S3Config {
 	return c
 }
 
+func (c *S3Config) logSourceOfCredentials(flags *FlagStorage) {
+	if c.AccessKey != "" {
+		log.Infof("internal config %v", c.AccessKey)
+	} else if os.Getenv("AWS_ACCESS_KEY") != "" {
+		log.Infof("env AWS_ACCESS_KEY = %v", os.Getenv("AWS_ACCESS_KEY"))
+	} else if os.Getenv("AWS_PROFILE") != "" {
+		log.Infof("env AWS_PROFILE = %v", os.Getenv("AWS_PROFILE"))
+	}
+	if flags.Endpoint != "" {
+		log.Infof("command line endpoint: %v", flags.Endpoint)
+	} else if os.Getenv("AWS_ENDPOINT_URL") != "" {
+		log.Infof("env AWS_ENDPOINT_URL = %v", os.Getenv("AWS_ENDPOINT_URL"))
+	} else if DefaultEndpoint != "" {
+		log.Infof("default endpoint = %v", DefaultEndpoint)
+	}
+}
+
 func (c *S3Config) ToAwsConfig(flags *FlagStorage) (*aws.Config, error) {
+	c.logSourceOfCredentials(flags)
+
 	tr := &defaultHTTPTransport
 	if flags.NoVerifySSL {
 		if tr.TLSClientConfig != nil {
@@ -134,6 +154,10 @@ func (c *S3Config) ToAwsConfig(flags *FlagStorage) (*aws.Config, error) {
 	}
 	if flags.Endpoint != "" {
 		awsConfig.Endpoint = &flags.Endpoint
+	} else if os.Getenv("AWS_ENDPOINT_URL") != "" {
+		awsConfig.Endpoint = aws.String(os.Getenv("AWS_ENDPOINT_URL"))
+	} else {
+		awsConfig.Endpoint = &DefaultEndpoint
 	}
 
 	awsConfig.S3ForcePathStyle = aws.Bool(!c.Subdomain)

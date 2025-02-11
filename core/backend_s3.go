@@ -276,8 +276,9 @@ func (s *S3Backend) detectBucketLocationByHEAD() (err error, isAws bool) {
 		Path:   s.bucket,
 	}
 
-	if s.awsConfig.Endpoint != nil {
-		endpoint, err := url.Parse(*s.awsConfig.Endpoint)
+	e := s.awsConfig.Endpoint
+	if e != nil && *e != "" {
+		endpoint, err := url.Parse(*e)
 		if err != nil {
 			return err, false
 		}
@@ -402,16 +403,9 @@ func (s *S3Backend) Init(key string) error {
 		if err == nil {
 			// we detected a region header, this is probably AWS S3,
 			// or we can use anonymous access, or both
-			s.newS3()
-		} else if err == syscall.ENXIO {
-			return fmt.Errorf("bucket %v does not exist", s.bucket)
-		} else {
-			// this is NOT AWS, we expect the request to fail with 403 if this is not
-			// an anonymous bucket
-			if err != syscall.EACCES {
-				s3Log.Errorf("Unable to access '%v': %v", s.bucket, err)
-			}
 		}
+		// if region still not set let SDK config and service decide whether it needed
+		s.newS3()
 	}
 
 	// try again with the credential to make sure

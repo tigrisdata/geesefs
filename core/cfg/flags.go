@@ -30,7 +30,10 @@ import (
 	"github.com/urfave/cli"
 )
 
-var Version = "0.42.4"
+var (
+	Version         string // set by build system
+	DefaultEndpoint string // set by build system
+)
 
 var flagCategories map[string]string
 
@@ -159,9 +162,9 @@ MISC OPTIONS:
 
 		cli.StringFlag{
 			Name:  "endpoint",
-			Value: "https://storage.yandexcloud.net",
+			Value: "",
 			Usage: "The S3 endpoint to connect to." +
-				" Possible values: http://127.0.0.1:8081/, https://s3.amazonaws.com",
+				" Examples: http://127.0.0.1:8081/, " + DefaultEndpoint,
 		},
 
 		cli.StringFlag{
@@ -1078,7 +1081,7 @@ func DefaultFlags() *FlagStorage {
 		Gid:                 uint32(gid),
 		Setuid:              uid,
 		Setgid:              gid,
-		Endpoint:            "https://storage.yandexcloud.net",
+		Endpoint:            "",
 		Backend:             (&S3Config{}).Init(),
 		MemoryLimit:         1000 * 1024 * 1024,
 		EntryLimit:          100000,
