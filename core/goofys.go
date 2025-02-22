@@ -16,8 +16,6 @@
 package core
 
 import (
-	"github.com/yandex-cloud/geesefs/core/cfg"
-
 	"context"
 	"fmt"
 	"math/rand"
@@ -34,6 +32,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/sirupsen/logrus"
+	"github.com/yandex-cloud/geesefs/core/cfg"
 )
 
 // goofys is a Filey System written in Go. All the backend data is

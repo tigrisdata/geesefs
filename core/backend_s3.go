@@ -16,12 +16,13 @@
 package core
 
 import (
-	"github.com/yandex-cloud/geesefs/core/cfg"
-	"golang.org/x/sync/errgroup"
-
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -39,6 +40,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/yandex-cloud/geesefs/core/cfg"
+	"golang.org/x/sync/errgroup"
 )
 
 type S3Backend struct {
@@ -437,83 +440,179 @@ func withHeader(req *request.Request, key, value string) {
 	req.HTTPRequest.Header.Set(key, value)
 }
 
-func (s *S3Backend) ListObjectsV2(params *s3.ListObjectsV2Input) (*s3.ListObjectsV2Output, string, error) {
-	/*
-		if s.config.ListV1Ext {
-			in := s3.ListObjectsV1ExtInput(*params)
-			req, resp := s.S3.ListObjectsV1ExtRequest(&in)
-			if s.flags.TigrisPrefetch {
-				withHeader(req, "X-Tigris-Prefetch", "true")
-			}
-			err := req.Send()
-			if err != nil {
-				if awsErr, ok := err.(awserr.Error); ok {
-					if awsErr.Code() == "InvalidArgument" || awsErr.Code() == "NotImplemented" {
-						// Fallback to list v1
-						s.config.ListV1Ext = false
-						return s.ListObjectsV2(params)
-					}
-				}
-				return nil, "", err
-			}
-			out := s3.ListObjectsV2Output(*resp)
-			for _, obj := range out.Contents {
-				// Make non-nil maps for all objects so that we know metadata is empty
-				if obj.UserMetadata == nil {
-					obj.UserMetadata = make(map[string]*string)
-				}
-			}
-			return &out, s.getRequestId(req), nil
-		} else
-	*/
+func (s *S3Backend) listObjects(params *s3.ListObjectsV2Input) (*s3.ListObjectsV2Output, string, error) {
 	if s.config.ListV2 {
-		req, resp := s.S3.ListObjectsV2Request(params)
-		if s.flags.TigrisPrefetch {
-			withHeader(req, "X-Tigris-Prefetch", "true")
-		}
-		err := req.Send()
-		if err != nil {
-			return nil, "", err
-		}
-		return resp, s.getRequestId(req), nil
-	} else {
-		v1 := s3.ListObjectsInput{
-			Bucket:       params.Bucket,
-			Delimiter:    params.Delimiter,
-			EncodingType: params.EncodingType,
-			MaxKeys:      params.MaxKeys,
-			Prefix:       params.Prefix,
-			RequestPayer: params.RequestPayer,
-		}
-		if params.StartAfter != nil {
-			v1.Marker = params.StartAfter
-		} else {
-			v1.Marker = params.ContinuationToken
-		}
-
-		objs, err := s.S3.ListObjects(&v1)
-		if err != nil {
-			return nil, "", err
-		}
-
-		count := int64(len(objs.Contents))
-		v2Objs := s3.ListObjectsV2Output{
-			CommonPrefixes:        objs.CommonPrefixes,
-			Contents:              objs.Contents,
-			ContinuationToken:     objs.Marker,
-			Delimiter:             objs.Delimiter,
-			EncodingType:          objs.EncodingType,
-			IsTruncated:           objs.IsTruncated,
-			KeyCount:              &count,
-			MaxKeys:               objs.MaxKeys,
-			Name:                  objs.Name,
-			NextContinuationToken: objs.NextMarker,
-			Prefix:                objs.Prefix,
-			StartAfter:            objs.Marker,
-		}
-
-		return &v2Objs, "", nil
+		return s.listObjectsV2(params)
 	}
+	return s.listObjectsV1(params)
+}
+
+func (s *S3Backend) listObjectsV2(params *s3.ListObjectsV2Input) (*s3.ListObjectsV2Output, string, error) {
+	req, resp := s.S3.ListObjectsV2Request(params)
+	if s.flags.TigrisPrefetch {
+		withHeader(req, "X-Tigris-Prefetch", "true")
+	}
+	err := req.Send()
+	if err != nil {
+		return nil, "", err
+	}
+	return resp, s.getRequestId(req), nil
+}
+
+func (s *S3Backend) listObjectsV1(params *s3.ListObjectsV2Input) (*s3.ListObjectsV2Output, string, error) {
+	v1 := s3.ListObjectsInput{
+		Bucket:       params.Bucket,
+		Delimiter:    params.Delimiter,
+		EncodingType: params.EncodingType,
+		MaxKeys:      params.MaxKeys,
+		Prefix:       params.Prefix,
+		RequestPayer: params.RequestPayer,
+	}
+	if params.StartAfter != nil {
+		v1.Marker = params.StartAfter
+	} else {
+		v1.Marker = params.ContinuationToken
+	}
+
+	objs, err := s.S3.ListObjects(&v1)
+	if err != nil {
+		return nil, "", err
+	}
+
+	count := int64(len(objs.Contents))
+	v2Objs := s3.ListObjectsV2Output{
+		CommonPrefixes:        objs.CommonPrefixes,
+		Contents:              objs.Contents,
+		ContinuationToken:     objs.Marker,
+		Delimiter:             objs.Delimiter,
+		EncodingType:          objs.EncodingType,
+		IsTruncated:           objs.IsTruncated,
+		KeyCount:              &count,
+		MaxKeys:               objs.MaxKeys,
+		Name:                  objs.Name,
+		NextContinuationToken: objs.NextMarker,
+		Prefix:                objs.Prefix,
+		StartAfter:            objs.Marker,
+	}
+
+	return &v2Objs, "", nil
+}
+
+type RestoreStatus struct {
+	IsRestoreInProgress *bool      `type:"boolean"`
+	RestoreExpiryDate   *time.Time `type:"timestamp"`
+}
+
+type Owner struct {
+	DisplayName *string `type:"string"`
+	ID          *string `type:"string"`
+}
+
+type CommonPrefix struct {
+	Prefix *string `type:"string"`
+}
+
+type xsdBase64Binary []byte
+
+func (b *xsdBase64Binary) UnmarshalText(text []byte) (err error) {
+	*b, err = base64.StdEncoding.DecodeString(string(text))
+	return
+}
+func (b xsdBase64Binary) MarshalText() ([]byte, error) {
+	var buf bytes.Buffer
+	enc := base64.NewEncoder(base64.StdEncoding, &buf)
+	if _, err := enc.Write([]byte(b)); err != nil {
+		return nil, err
+	}
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+type MetadataEntry struct {
+	Name  string
+	Value string
+}
+
+type Object struct {
+	ChecksumAlgorithm []*string       `type:"list" flattened:"true" enum:"ChecksumAlgorithm"`
+	ETag              *string         `type:"string"`
+	Key               *string         `min:"1" type:"string"`
+	LastModified      *time.Time      `type:"timestamp"`
+	Owner             *Owner          `type:"structure"`
+	RestoreStatus     *RestoreStatus  `type:"structure"`
+	Size              *int64          `type:"long"`
+	StorageClass      *string         `type:"string" enum:"ObjectStorageClass"`
+	Metadata          []MetadataEntry `type:"list" flattened:"true"`
+	Data              xsdBase64Binary `type:"blob"`
+}
+
+type ListObjectsV2Output struct {
+	_                     struct{}        `type:"structure"`
+	CommonPrefixes        []*CommonPrefix `type:"list" flattened:"true"`
+	Contents              []*Object       `type:"list" flattened:"true"`
+	ContinuationToken     *string         `type:"string"`
+	Delimiter             *string         `type:"string"`
+	EncodingType          *string         `type:"string" enum:"EncodingType"`
+	IsTruncated           *bool           `type:"boolean"`
+	KeyCount              *int64          `type:"integer"`
+	MaxKeys               *int64          `type:"integer"`
+	Name                  *string         `type:"string"`
+	NextContinuationToken *string         `type:"string"`
+	Prefix                *string         `type:"string"`
+	RequestCharged        *string         `location:"header" locationName:"x-amz-request-charged" type:"string" enum:"RequestCharged"`
+	StartAfter            *string         `type:"string"`
+}
+
+func unmarshalListObjectsV2Response(r *request.Request) {
+	if r.Error != nil {
+		return
+	}
+
+	b, err := io.ReadAll(r.HTTPResponse.Body)
+	if err != nil {
+		r.Error = fmt.Errorf("custom unmarshal read body: %w", err)
+		return
+	}
+
+	var response *ListObjectsV2Output
+	if err := xml.Unmarshal(b, &response); err != nil {
+		r.Error = fmt.Errorf("custom unmarshal failed: %w", err)
+		return
+	}
+
+	r.Data = response
+}
+
+func (s *S3Backend) listObjectsV2Special(params *s3.ListObjectsV2Input) (*ListBlobsOutput, error) {
+	req, _ := s.S3.ListObjectsV2Request(params)
+
+	if s.flags.TigrisPrefetch {
+		withHeader(req, "X-Tigris-Prefetch", "true")
+	}
+
+	withHeader(req, "X-Tigris-List-Metadata", "true")
+
+	if s.flags.TigrisListContent {
+		withHeader(req, "X-Tigris-List-Content", "true")
+	}
+
+	req.Handlers.Unmarshal.Clear()
+	req.Handlers.Unmarshal.PushFront(unmarshalListObjectsV2Response)
+
+	if err := req.Send(); err != nil {
+		return nil, err
+	}
+
+	reqId := s.getRequestId(req)
+
+	resp, ok := req.Data.(*ListObjectsV2Output)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response type: %T", req.Data)
+	}
+
+	return s.convertListOutputSpecial(resp, reqId)
 }
 
 func metadataToLower(m map[string]*string) map[string]*string {
@@ -568,25 +667,48 @@ func (s *S3Backend) HeadBlob(param *HeadBlobInput) (*HeadBlobOutput, error) {
 	}, nil
 }
 
-func (s *S3Backend) ListBlobs(param *ListBlobsInput) (*ListBlobsOutput, error) {
-	var maxKeys *int64
-
-	if param.MaxKeys != nil {
-		maxKeys = aws.Int64(int64(*param.MaxKeys))
+func (s *S3Backend) convertListMetadataSpecial(in []MetadataEntry) map[string]*string {
+	if len(in) == 0 {
+		return nil
 	}
 
-	resp, reqId, err := s.ListObjectsV2(&s3.ListObjectsV2Input{
-		Bucket:            &s.bucket,
-		Prefix:            param.Prefix,
-		Delimiter:         param.Delimiter,
-		MaxKeys:           maxKeys,
-		StartAfter:        param.StartAfter,
-		ContinuationToken: param.ContinuationToken,
-	})
-	if err != nil {
-		return nil, err
+	out := make(map[string]*string)
+	for _, v := range in {
+		out[v.Name] = &v.Value
 	}
 
+	return out
+}
+
+func (s *S3Backend) convertListOutputSpecial(resp *ListObjectsV2Output, reqId string) (*ListBlobsOutput, error) {
+	prefixes := make([]BlobPrefixOutput, 0)
+	items := make([]BlobItemOutput, 0)
+
+	for _, p := range resp.CommonPrefixes {
+		prefixes = append(prefixes, BlobPrefixOutput{Prefix: p.Prefix})
+	}
+	for _, i := range resp.Contents {
+		items = append(items, BlobItemOutput{
+			Key:          i.Key,
+			ETag:         i.ETag,
+			LastModified: i.LastModified,
+			Size:         uint64(*i.Size),
+			StorageClass: i.StorageClass,
+			Metadata:     s.convertListMetadataSpecial(i.Metadata),
+			Content:      i.Data,
+		})
+	}
+
+	return &ListBlobsOutput{
+		Prefixes:              prefixes,
+		Items:                 items,
+		NextContinuationToken: resp.NextContinuationToken,
+		IsTruncated:           *resp.IsTruncated,
+		RequestId:             reqId,
+	}, nil
+}
+
+func (s *S3Backend) convertListOutput(resp *s3.ListObjectsV2Output, reqId string) (*ListBlobsOutput, error) {
 	prefixes := make([]BlobPrefixOutput, 0)
 	items := make([]BlobItemOutput, 0)
 
@@ -611,6 +733,34 @@ func (s *S3Backend) ListBlobs(param *ListBlobsInput) (*ListBlobsOutput, error) {
 		IsTruncated:           *resp.IsTruncated,
 		RequestId:             reqId,
 	}, nil
+}
+
+func (s *S3Backend) ListBlobs(param *ListBlobsInput) (*ListBlobsOutput, error) {
+	var maxKeys *int64
+
+	if param.MaxKeys != nil {
+		maxKeys = aws.Int64(int64(*param.MaxKeys))
+	}
+
+	req := &s3.ListObjectsV2Input{
+		Bucket:            &s.bucket,
+		Prefix:            param.Prefix,
+		Delimiter:         param.Delimiter,
+		MaxKeys:           maxKeys,
+		StartAfter:        param.StartAfter,
+		ContinuationToken: param.ContinuationToken,
+	}
+
+	if s.config.EnableSpecials {
+		return s.listObjectsV2Special(req)
+	}
+
+	resp, reqId, err := s.listObjects(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.convertListOutput(resp, reqId)
 }
 
 func (s *S3Backend) DeleteBlob(param *DeleteBlobInput) (*DeleteBlobOutput, error) {

@@ -69,7 +69,8 @@ type S3Config struct {
 	ACL        string
 	NoChecksum bool
 	ListV2     bool
-	ListV1Ext  bool
+
+	EnableSpecials bool
 
 	Subdomain bool
 

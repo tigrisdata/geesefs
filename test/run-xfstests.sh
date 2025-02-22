@@ -2,7 +2,9 @@
 
 set -e
 
-. `dirname $0`/run-proxy.sh
+if [ "$NO_PROXY" == "" ]; then
+  . `dirname $0`/run-proxy.sh
+fi
 
 mkdir -p /tmp/geesefs
 mkdir -p /tmp/geesefs2

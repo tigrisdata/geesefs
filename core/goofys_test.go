@@ -2267,8 +2267,6 @@ func (s *GoofysTest) newBackend(t *C, bucket string, createBucket bool) (cloud S
 		s3, err := NewS3(bucket, s.fs.flags, config)
 		t.Assert(err, IsNil)
 
-		s3.config.ListV1Ext = hasEnv("YANDEX")
-
 		if s.emulator {
 			s3.Handlers.Sign.Clear()
 			s3.Handlers.Sign.PushBack(SignV2)

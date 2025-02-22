@@ -196,7 +196,7 @@ func (t *GoofysTest) DeleteADLBlobs(cloud StorageBackend, items []string) error 
 	return nil
 }
 
-func (s *GoofysTest) selectTestConfig(t *C, flags *cfg.FlagStorage) (conf cfg.S3Config) {
+func selectTestConfig(flags *cfg.FlagStorage) (conf cfg.S3Config) {
 	(&conf).Init()
 
 	if hasEnv("AWS") {
@@ -215,10 +215,10 @@ func (s *GoofysTest) selectTestConfig(t *C, flags *cfg.FlagStorage) (conf cfg.S3
 			}
 		}
 
-		conf.BucketOwner = os.Getenv("BUCKET_OWNER")
-		if conf.BucketOwner == "" {
-			panic("BUCKET_OWNER is required on AWS")
-		}
+		//		conf.BucketOwner = os.Getenv("BUCKET_OWNER")
+		//		if conf.BucketOwner == "" {
+		//			panic("BUCKET_OWNER is required on AWS")
+		//		}
 	} else if hasEnv("GCS") {
 		conf.Region = "us-west1"
 		conf.Profile = os.Getenv("GCS")
@@ -229,8 +229,6 @@ func (s *GoofysTest) selectTestConfig(t *C, flags *cfg.FlagStorage) (conf cfg.S3
 		conf.SecretKey = "zuf+tfteSlswRu7BJ86wekitnifILbZam1KYY3TG"
 		flags.Endpoint = "https://play.minio.io:9000"
 	} else {
-		s.emulator = hasEnv("EMULATOR")
-
 		conf.Region = "us-west-2"
 		conf.AccessKey = "foo"
 		conf.SecretKey = "bar"
@@ -250,6 +248,12 @@ func (s *GoofysTest) selectTestConfig(t *C, flags *cfg.FlagStorage) (conf cfg.S3
 		}
 	}
 
+	return
+}
+
+func (s *GoofysTest) selectTestConfig(t *C, flags *cfg.FlagStorage) (conf cfg.S3Config) {
+	conf = selectTestConfig(flags)
+	s.emulator = hasEnv("EMULATOR")
 	return
 }
 
@@ -526,7 +530,6 @@ func (s *GoofysTest) SetUpTest(t *C) {
 		t.Assert(err, IsNil)
 
 		s.cloud = s3
-		s3.config.ListV1Ext = hasEnv("YANDEX")
 		if hasEnv("EVENTUAL_CONSISTENCY") {
 			s.cloud = NewS3BucketEventualConsistency(s3)
 		}

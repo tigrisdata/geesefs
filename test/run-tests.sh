@@ -8,9 +8,15 @@ if [ $# == 1 ]; then
     T="-check.f $1"
 fi
 
-. "$(dirname "$0")/run-proxy.sh"
+if [ "$NO_PROXY" == "" ]; then
+  . "$(dirname "$0")/run-proxy.sh"
+fi
+
+if [ "$TIMEOUT" != "" ]; then
+  TIMEOUT="-timeout $TIMEOUT"
+fi
 
 # run test in `go test` local mode so streaming output works
 cd core
-CGO_ENABLED=1 go test -race -v -timeout "$TIMEOUT" -check.vv $T
+CGO_ENABLED=1 go test -race -v "$TIMEOUT" -check.vv $T
 exit $?
