@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -14,13 +15,30 @@ import (
 	"github.com/yandex-cloud/geesefs/core/cfg"
 )
 
-func TigrisDetected(flags *cfg.FlagStorage) bool {
-	r, err := http.Get(flags.Endpoint + "/")
-	if err != nil {
-		return false
+func tigrisDetected(flags *cfg.FlagStorage) (bool, bool) {
+	endpoint := flags.Endpoint
+	if endpoint == "" {
+		endpoint = os.Getenv("AWS_ENDPOINT_URL")
 	}
 
-	return strings.Contains(r.Header.Get("Server"), "Tigris")
+	local := strings.Contains(endpoint, "localhost") || strings.Contains(endpoint, "127.0.0.1")
+
+	r, err := http.Get(endpoint + "/")
+	if err != nil {
+		return false, local
+	}
+
+	return strings.Contains(r.Header.Get("Server"), "Tigris"), local
+}
+
+func LocalTigrisDetected(flags *cfg.FlagStorage) bool {
+	t, local := tigrisDetected(flags)
+	return t && local
+}
+
+func TigrisDetected(flags *cfg.FlagStorage) bool {
+	t, _ := tigrisDetected(flags)
+	return t
 }
 
 func TestListIncludeMetadataAndContent(t *testing.T) {

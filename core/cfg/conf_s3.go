@@ -108,9 +108,11 @@ func (c *S3Config) Init() *S3Config {
 
 func (c *S3Config) logSourceOfCredentials(flags *FlagStorage) {
 	if c.AccessKey != "" {
-		log.Infof("internal config %v", c.AccessKey)
-	} else if os.Getenv("AWS_ACCESS_KEY") != "" {
-		log.Infof("env AWS_ACCESS_KEY = %v", os.Getenv("AWS_ACCESS_KEY"))
+		log.Infof("internal config: %v", c.AccessKey)
+	} else if c.Profile != "" {
+		log.Infof("command line profile: %v", c.Profile)
+	} else if os.Getenv("AWS_ACCESS_KEY_ID") != "" {
+		log.Infof("env AWS_ACCESS_KEY_ID = %v", os.Getenv("AWS_ACCESS_KEY_ID"))
 	} else if os.Getenv("AWS_PROFILE") != "" {
 		log.Infof("env AWS_PROFILE = %v", os.Getenv("AWS_PROFILE"))
 	}

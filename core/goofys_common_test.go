@@ -18,36 +18,32 @@
 package core
 
 import (
-	"github.com/yandex-cloud/geesefs/core/cfg"
-
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"os/user"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
-
-	"context"
-
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/corehandlers"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
 	azureauth "github.com/Azure/go-autorest/autorest/azure/auth"
-
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/corehandlers"
 	"github.com/sirupsen/logrus"
-
+	"github.com/yandex-cloud/geesefs/core/cfg"
 	. "gopkg.in/check.v1"
-	"runtime/debug"
 )
 
 // so I don't get complains about unused imports
@@ -98,6 +94,9 @@ type GoofysTest struct {
 	env map[string]*string
 
 	timeout chan int
+
+	isTigris      bool
+	isLocalTigris bool
 }
 
 var _ = Suite(&GoofysTest{})
@@ -282,6 +281,10 @@ func (s *GoofysTest) waitForEmulator(t *C, addr string) {
 
 func (s *GoofysTest) deleteBucket(cloud StorageBackend) error {
 	var err error
+	// FIXME: Tigris returns 500 for RemoveBucket. Skip it for now.
+	if s.isLocalTigris {
+		return nil
+	}
 	for i := 0; i < 5; i++ {
 		param := &ListBlobsInput{}
 
@@ -327,7 +330,7 @@ func (s *GoofysTest) deleteBucket(cloud StorageBackend) error {
 
 		_, err = cloud.RemoveBucket(&RemoveBucketInput{})
 		if awsErr, ok := err.(awserr.Error); ok {
-			if awsErr.Code() == "BucketNotEmpty" {
+			if awsErr.Code() == "BucketNotEmpty" || awsErr.Code() == "InternalError" {
 				log.Warnf("Retrying delete")
 				continue
 			} else if awsErr.Code() == "BucketNotExists" || awsErr.Code() == "NoSuchBucket" {
@@ -373,7 +376,7 @@ func (s *GoofysTest) setupBlobs(cloud StorageBackend, t *C, env map[string]*stri
 	throttler := make(semaphore, concurrency)
 	throttler.P(concurrency)
 
-	var globalErr error
+	var globalErr atomic.Value
 	for path, c := range env {
 		throttler.V(1)
 		go func(path string, content *string) {
@@ -402,7 +405,7 @@ func (s *GoofysTest) setupBlobs(cloud StorageBackend, t *C, env map[string]*stri
 
 			_, err := cloud.PutBlob(params)
 			if err != nil {
-				globalErr = err
+				globalErr.Store(err)
 			}
 			t.Assert(err, IsNil)
 		}(path, c)
@@ -410,7 +413,7 @@ func (s *GoofysTest) setupBlobs(cloud StorageBackend, t *C, env map[string]*stri
 	throttler.V(concurrency)
 	throttler = make(semaphore, concurrency)
 	throttler.P(concurrency)
-	t.Assert(globalErr, IsNil)
+	t.Assert(globalErr.Load(), IsNil)
 
 	// double check, except on AWS S3, because there we sometimes
 	// hit 404 NoSuchBucket and there's no way to distinguish that
@@ -440,7 +443,7 @@ func (s *GoofysTest) setupBlobs(cloud StorageBackend, t *C, env map[string]*stri
 			}(path, c)
 		}
 		throttler.V(concurrency)
-		t.Assert(globalErr, IsNil)
+		t.Assert(globalErr.Load(), IsNil)
 	}
 }
 
@@ -534,7 +537,7 @@ func (s *GoofysTest) SetUpTest(t *C) {
 			s.cloud = NewS3BucketEventualConsistency(s3)
 		}
 
-		if s.emulator {
+		if s.emulator && !TigrisDetected(flags) {
 			s3.Handlers.Sign.Clear()
 			s3.Handlers.Sign.PushBack(SignV2)
 			s3.Handlers.Sign.PushBackNamed(corehandlers.BuildContentLengthHandler)
@@ -651,6 +654,14 @@ func (s *GoofysTest) SetUpTest(t *C) {
 		t.Assert(s.cloud, NotNil)
 	} else {
 		t.Fatal("Unsupported backend")
+	}
+
+	s.isTigris = TigrisDetected(flags)
+	s.isLocalTigris = LocalTigrisDetected(flags)
+	log.Infof("Tigris detected: %v, local: %v", s.isTigris, s.isLocalTigris)
+
+	if s.isLocalTigris {
+		s.emulator = true
 	}
 
 	if createBucket {

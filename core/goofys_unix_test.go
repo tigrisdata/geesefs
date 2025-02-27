@@ -576,9 +576,15 @@ func (s *GoofysTest) testNotifyRefresh(t *C, testInSubdir bool, testRefreshDir b
 	t.Assert(err, IsNil)
 
 	// Refresh is done asynchronously (it needs kernel locks), so wait a bit
-	time.Sleep(500 * time.Millisecond)
-
-	_, err = os.Open(testdir + "/testnotify")
+	for i := 0; i < 50; i++ {
+		var f *os.File
+		f, err = os.Open(testdir + "/testnotify")
+		if err != nil {
+			break
+		}
+		t.Assert(f.Close(), IsNil)
+		time.Sleep(50 * time.Millisecond)
+	}
 	t.Assert(os.IsNotExist(err), Equals, true)
 
 	t.Assert(containsFile(testdir, "testnotify"), Equals, false)

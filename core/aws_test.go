@@ -41,6 +41,10 @@ func (s *AwsTest) SetUpSuite(t *C) {
 func (s *AwsTest) TestRegionDetection(t *C) {
 	s.s3.bucket = "goofys-eu-west-1.kahing.xyz"
 
+	if TigrisDetected(s.s3.flags) {
+		t.Skip("Not relevant for Tigris detected")
+	}
+
 	err, isAws := s.s3.detectBucketLocationByHEAD()
 	t.Assert(err, IsNil)
 	t.Assert(*s.s3.awsConfig.Region, Equals, "eu-west-1")
@@ -48,7 +52,11 @@ func (s *AwsTest) TestRegionDetection(t *C) {
 }
 
 func (s *AwsTest) TestBucket404(t *C) {
-	s.s3.bucket = RandStringBytesMaskImprSrc(64)
+	s.s3.bucket = RandStringBytesMaskImprSrc(63)
+
+	if TigrisDetected(s.s3.flags) {
+		t.Skip("Not relevant for Tigris detected")
+	}
 
 	err, isAws := s.s3.detectBucketLocationByHEAD()
 	t.Assert(err, Equals, syscall.ENXIO)

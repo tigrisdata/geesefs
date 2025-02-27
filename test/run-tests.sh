@@ -13,10 +13,10 @@ if [ "$NO_PROXY" == "" ]; then
 fi
 
 if [ "$TIMEOUT" != "" ]; then
-  TIMEOUT="-timeout $TIMEOUT"
+  TIMEOUT="-test.timeout $TIMEOUT"
 fi
 
 # run test in `go test` local mode so streaming output works
 cd core
-CGO_ENABLED=1 go test -race -v "$TIMEOUT" -check.vv $T
+CGO_ENABLED=1 go test -race -v $TIMEOUT -check.vv $T
 exit $?
