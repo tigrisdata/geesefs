@@ -150,6 +150,11 @@ MISC OPTIONS:
 		},
 
 		cli.BoolFlag{
+			Name:  "tigris-list-content",
+			Usage: "Include inlined objects content in list (default: on)",
+		},
+
+		cli.BoolFlag{
 			Name:  "refresh-dirs",
 			Usage: "Automatically refresh open directories using notifications under Windows",
 		},
@@ -512,7 +517,7 @@ MISC OPTIONS:
 		cli.BoolFlag{
 			Name: "enable-specials",
 			Usage: "Enable special file support (sockets, devices, named pipes)." +
-				" Only works correctly if your S3 returns UserMetadata in listings (default: on for Yandex, off for others)",
+				" Only works correctly if your S3 returns UserMetadata in listings (default: on for Tigris, off for others)",
 		},
 
 		cli.BoolFlag{
@@ -927,7 +932,8 @@ func PopulateFlags(c *cli.Context) (ret *FlagStorage) {
 		ClusterMode:           c.Bool("cluster"),
 		ClusterGrpcReflection: c.Bool("grpc-reflection"),
 
-		TigrisPrefetch: !c.Bool("no-tigris-prefetch"),
+		TigrisPrefetch:    !c.Bool("no-tigris-prefetch"),
+		TigrisListContent: c.Bool("tigris-list-content"),
 	}
 
 	if runtime.GOOS == "windows" {
@@ -945,7 +951,6 @@ func PopulateFlags(c *cli.Context) (ret *FlagStorage) {
 		}
 	}
 
-	// S3 by default, if not initialized in api/api.go
 	if flags.Backend == nil {
 		flags.Backend = (&S3Config{}).Init()
 		config, _ := flags.Backend.(*S3Config)
@@ -972,20 +977,17 @@ func PopulateFlags(c *cli.Context) (ret *FlagStorage) {
 		if config.IAMFlavor != "gcp" && config.IAMFlavor != "imdsv1" {
 			panic("Unknown --iam-flavor: " + config.IAMFlavor)
 		}
+
+		// special enabled for the Tigris by default
+		if flags.IsTigris() {
+			flags.EnableSpecials = !c.IsSet("no-specials")
+		}
+
+		config.EnableSpecials = flags.EnableSpecials
+
+		// list v2 is the default list method
 		listType := c.String("list-type")
-		isYandex := strings.Contains(flags.Endpoint, "yandex")
-		if isYandex && !c.IsSet("no-specials") {
-			flags.EnableSpecials = true
-		}
-		if listType == "" {
-			if isYandex {
-				listType = "ext-v1"
-			} else {
-				listType = "1"
-			}
-		}
-		config.ListV1Ext = listType == "ext-v1"
-		config.ListV2 = listType == "2"
+		config.ListV2 = !(listType == "1" || strings.ToLower(listType) == "v1")
 
 		config.MultipartCopyThreshold = uint64(c.Int("multipart-copy-threshold")) * 1024 * 1024
 
@@ -1002,10 +1004,6 @@ func PopulateFlags(c *cli.Context) (ret *FlagStorage) {
 		if config.UseKMS {
 			config.UseSSE = true
 		}
-	}
-
-	if c.IsSet("no-specials") {
-		flags.EnableSpecials = false
 	}
 
 	if syscall.Getuid() == 0 && !c.IsSet("setuid") && flags.Uid != 0 {
@@ -1117,6 +1115,7 @@ func DefaultFlags() *FlagStorage {
 			{PartSize: 25 * 1024 * 1024, PartCount: 1000},
 			{PartSize: 125 * 1024 * 1024, PartCount: 8000},
 		},
-		TigrisPrefetch: true,
+		TigrisPrefetch:    true,
+		TigrisListContent: true,
 	}
 }

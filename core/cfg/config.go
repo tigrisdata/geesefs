@@ -125,7 +125,8 @@ type FlagStorage struct {
 	ClusterMe             *NodeConfig
 	ClusterPeers          []*NodeConfig
 
-	TigrisPrefetch bool
+	TigrisPrefetch    bool
+	TigrisListContent bool
 }
 
 func (flags *FlagStorage) GetMimeType(fileName string) (retMime *string) {
@@ -156,6 +157,11 @@ func (flags *FlagStorage) Cleanup() {
 			log.Errorf("rmdir %v = %v", flags.MountPointCreated, err)
 		}
 	}
+}
+
+func (flags *FlagStorage) IsTigris() bool {
+	return strings.Contains(flags.Endpoint, "tigris.dev") ||
+		strings.Contains(flags.Endpoint, "storage.dev")
 }
 
 var defaultHTTPTransport = http.Transport{

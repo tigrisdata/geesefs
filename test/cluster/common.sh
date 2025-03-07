@@ -2,14 +2,13 @@
 
 set -o pipefail
 
-. `dirname $0`/mount.sh
-
-if [[ "$AWS_ACCESS_KEY_ID" != "" && "$AWS_SECRET_ACCESS_KEY" != "" ]]; then
+if [ "$NO_PROXY" == "" ]; then
   . `dirname $0`/s3.sh
 else
   . `dirname $0`/proxy.sh
 fi
 
+. `dirname $0`/mount.sh
 
 TEST_ARTIFACTS="${TEST_ARTIFACTS:-executions/$(date +"%Y-%m-%d-%H-%M-%S")}"
 mkdir -p "$TEST_ARTIFACTS"

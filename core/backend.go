@@ -42,8 +42,8 @@ type BlobItemOutput struct {
 	LastModified *time.Time
 	Size         uint64
 	StorageClass *string
-	// may be nil in list responses for backends that don't return metadata in listings
-	Metadata map[string]*string
+	Metadata     map[string]*string
+	Content      []byte
 }
 
 type HeadBlobOutput struct {
